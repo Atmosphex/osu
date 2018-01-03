@@ -10,7 +10,6 @@ using System.Runtime.Serialization;
 using System.Runtime.Serialization.Formatters;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
-using System.Threading;
 
 namespace osu.Game.IO.Legacy
 {
@@ -50,7 +49,7 @@ namespace osu.Game.IO.Legacy
             int len = ReadInt32();
             if (len > 0) return ReadBytes(len);
             if (len < 0) return null;
-            return new byte[0];
+            return Array.Empty<byte>();
         }
 
         /// <summary> Reads a char array from the buffer, handling nulls and the array length. </summary>
@@ -59,14 +58,14 @@ namespace osu.Game.IO.Legacy
             int len = ReadInt32();
             if (len > 0) return ReadChars(len);
             if (len < 0) return null;
-            return new char[0];
+            return Array.Empty<char>();
         }
 
         /// <summary> Reads a DateTime from the buffer. </summary>
         public DateTime ReadDateTime()
         {
             long ticks = ReadInt64();
-            if (ticks < 0) throw new AbandonedMutexException("oops");
+            if (ticks < 0) throw new IOException("Bad ticks count read!");
             return new DateTime(ticks, DateTimeKind.Utc);
         }
 

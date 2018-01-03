@@ -1,22 +1,25 @@
 ﻿// Copyright (c) 2007-2017 ppy Pty Ltd <contact@ppy.sh>.
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
-using osu.Framework.Audio.Sample;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Sprites;
-using osu.Framework.Graphics.Transforms;
 using osu.Framework.Input;
 using OpenTK;
 using OpenTK.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Framework.Extensions.Color4Extensions;
+using osu.Game.Graphics.Containers;
+using osu.Game.Beatmaps.ControlPoints;
+using osu.Framework.Audio.Track;
+using System;
+using osu.Framework.Graphics.Shapes;
 
 namespace osu.Game.Graphics.UserInterface
 {
-    public class TwoLayerButton : ClickableContainer
+    public class TwoLayerButton : OsuClickableContainer
     {
-        private readonly TextAwesome icon;
+        private readonly BouncingIcon bouncingIcon;
 
         public Box IconLayer;
         public Box TextLayer;
@@ -28,7 +31,6 @@ namespace osu.Game.Graphics.UserInterface
 
         public static readonly Vector2 SIZE_EXTENDED = new Vector2(140, 50);
         public static readonly Vector2 SIZE_RETRACTED = new Vector2(100, 50);
-        public SampleChannel ActivationSound;
         private readonly SpriteText text;
 
         public Color4 HoverColour;
@@ -59,8 +61,12 @@ namespace osu.Game.Graphics.UserInterface
 
                 X = (value & Anchor.x2) > 0 ? SIZE_RETRACTED.X * shear * 0.5f : 0;
 
+                Remove(c1);
+                Remove(c2);
                 c1.Depth = (value & Anchor.x2) > 0 ? 0 : 1;
                 c2.Depth = (value & Anchor.x2) > 0 ? 1 : 0;
+                Add(c1);
+                Add(c2);
             }
         }
 
@@ -76,18 +82,21 @@ namespace osu.Game.Graphics.UserInterface
                     Width = 0.4f,
                     Children = new Drawable[]
                     {
-                        new Container {
+                        new Container
+                        {
                             RelativeSizeAxes = Axes.Both,
                             Shear = new Vector2(shear, 0),
                             Masking = true,
                             MaskingSmoothness = 2,
-                            EdgeEffect = new EdgeEffect {
+                            EdgeEffect = new EdgeEffectParameters
+                            {
                                 Type = EdgeEffectType.Shadow,
                                 Colour = Color4.Black.Opacity(0.2f),
                                 Offset = new Vector2(2, 0),
                                 Radius = 2,
                             },
-                            Children = new [] {
+                            Children = new[]
+                            {
                                 IconLayer = new Box
                                 {
                                     RelativeSizeAxes = Axes.Both,
@@ -95,11 +104,10 @@ namespace osu.Game.Graphics.UserInterface
                                 },
                             }
                         },
-                        icon = new TextAwesome
+                        bouncingIcon = new BouncingIcon
                         {
                             Anchor = Anchor.Centre,
                             Origin = Anchor.Centre,
-                            TextSize = 25,
                         },
                     }
                 },
@@ -111,18 +119,21 @@ namespace osu.Game.Graphics.UserInterface
                     Width = 0.6f,
                     Children = new Drawable[]
                     {
-                        new Container {
+                        new Container
+                        {
                             RelativeSizeAxes = Axes.Both,
                             Shear = new Vector2(shear, 0),
                             Masking = true,
                             MaskingSmoothness = 2,
-                            EdgeEffect = new EdgeEffect {
+                            EdgeEffect = new EdgeEffectParameters
+                            {
                                 Type = EdgeEffectType.Shadow,
                                 Colour = Color4.Black.Opacity(0.2f),
                                 Offset = new Vector2(2, 0),
                                 Radius = 2,
                             },
-                            Children = new [] {
+                            Children = new[]
+                            {
                                 TextLayer = new Box
                                 {
                                     Origin = Anchor.TopLeft,
@@ -146,7 +157,7 @@ namespace osu.Game.Graphics.UserInterface
         {
             set
             {
-                icon.Icon = value;
+                bouncingIcon.Icon = value;
             }
         }
 
@@ -158,62 +169,29 @@ namespace osu.Game.Graphics.UserInterface
             }
         }
 
-        protected override bool InternalContains(Vector2 screenSpacePos) => IconLayer.Contains(screenSpacePos) || TextLayer.Contains(screenSpacePos);
+        public override bool ReceiveMouseInputAt(Vector2 screenSpacePos) => IconLayer.ReceiveMouseInputAt(screenSpacePos) || TextLayer.ReceiveMouseInputAt(screenSpacePos);
 
         protected override bool OnHover(InputState state)
         {
-            icon.ClearTransforms();
+            this.ResizeTo(SIZE_EXTENDED, transform_time, Easing.OutElastic);
+            IconLayer.FadeColour(HoverColour, transform_time, Easing.OutElastic);
 
-            ResizeTo(SIZE_EXTENDED, transform_time, EasingTypes.OutElastic);
-
-            int duration = 0; //(int)(Game.Audio.BeatLength / 2);
-            if (duration == 0) duration = pulse_length;
-
-            IconLayer.FadeColour(HoverColour, transform_time, EasingTypes.OutElastic);
-
-            const double offset = 0; //(1 - Game.Audio.SyncBeatProgress) * duration;
-            double startTime = Time.Current + offset;
-
-            // basic pulse
-            icon.Transforms.Add(new TransformScale
-                {
-                    StartValue = new Vector2(1.1f),
-                    EndValue = Vector2.One,
-                    StartTime = startTime,
-                    EndTime = startTime + duration,
-                    Easing = EasingTypes.Out,
-                    LoopCount = -1,
-                    LoopDelay = duration
-                });
+            bouncingIcon.ScaleTo(1.1f, transform_time, Easing.OutElastic);
 
             return true;
         }
 
         protected override void OnHoverLost(InputState state)
         {
-            icon.ClearTransforms();
+            this.ResizeTo(SIZE_RETRACTED, transform_time, Easing.OutElastic);
+            IconLayer.FadeColour(TextLayer.Colour, transform_time, Easing.OutElastic);
 
-            ResizeTo(SIZE_RETRACTED, transform_time, EasingTypes.OutElastic);
+            bouncingIcon.ScaleTo(1, transform_time, Easing.OutElastic);
+        }
 
-            IconLayer.FadeColour(TextLayer.Colour, transform_time, EasingTypes.OutElastic);
-
-            int duration = 0; //(int)(Game.Audio.BeatLength);
-            if (duration == 0) duration = pulse_length * 2;
-
-            const double offset = 0; //(1 - Game.Audio.SyncBeatProgress) * duration;
-            double startTime = Time.Current + offset;
-
-            // slow pulse
-            icon.Transforms.Add(new TransformScale
-                {
-                    StartValue = new Vector2(1.1f),
-                    EndValue = Vector2.One,
-                    StartTime = startTime,
-                    EndTime = startTime + duration,
-                    Easing = EasingTypes.Out,
-                    LoopCount = -1,
-                    LoopDelay = duration
-                });
+        protected override bool OnMouseDown(InputState state, MouseDownEventArgs args)
+        {
+            return true;
         }
 
         protected override bool OnClick(InputState state)
@@ -227,12 +205,50 @@ namespace osu.Game.Graphics.UserInterface
             Add(flash);
 
             flash.Alpha = 1;
-            flash.FadeOut(500, EasingTypes.OutQuint);
+            flash.FadeOut(500, Easing.OutQuint);
             flash.Expire();
 
-            ActivationSound.Play();
-
             return base.OnClick(state);
+        }
+
+        private class BouncingIcon : BeatSyncedContainer
+        {
+            private const double beat_in_time = 60;
+
+            private readonly SpriteIcon icon;
+
+            public FontAwesome Icon { set { icon.Icon = value; } }
+
+            public BouncingIcon()
+            {
+                EarlyActivationMilliseconds = beat_in_time;
+                AutoSizeAxes = Axes.Both;
+
+                Children = new Drawable[]
+                {
+                    icon = new SpriteIcon
+                    {
+                        Anchor = Anchor.Centre,
+                        Origin = Anchor.Centre,
+                        Size = new Vector2(25),
+                    }
+                };
+            }
+
+            protected override void OnNewBeat(int beatIndex, TimingControlPoint timingPoint, EffectControlPoint effectPoint, TrackAmplitudes amplitudes)
+            {
+                base.OnNewBeat(beatIndex, timingPoint, effectPoint, amplitudes);
+
+                var beatLength = timingPoint.BeatLength;
+
+                float amplitudeAdjust = Math.Min(1, 0.4f + amplitudes.Maximum);
+
+                if (beatIndex < 0) return;
+
+                icon.ScaleTo(1 - 0.1f * amplitudeAdjust, beat_in_time, Easing.Out)
+                    .Then()
+                    .ScaleTo(1, beatLength * 2, Easing.OutQuint);
+            }
         }
     }
 }

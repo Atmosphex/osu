@@ -1,9 +1,9 @@
 ﻿// Copyright (c) 2007-2017 ppy Pty Ltd <contact@ppy.sh>.
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
+using System;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Primitives;
 using osu.Game.Beatmaps;
 using osu.Game.Screens.Select.Leaderboards;
 
@@ -11,6 +11,8 @@ namespace osu.Game.Screens.Select
 {
     public class BeatmapDetailArea : Container
     {
+        private const float details_padding = 10;
+
         private readonly Container content;
         protected override Container<Drawable> Content => content;
 
@@ -34,7 +36,7 @@ namespace osu.Game.Screens.Select
 
         public BeatmapDetailArea()
         {
-            AddInternal(new Drawable[]
+            AddRangeInternal(new Drawable[]
             {
                 new BeatmapDetailAreaTabControl
                 {
@@ -50,6 +52,7 @@ namespace osu.Game.Screens.Select
 
                             default:
                                 Details.Hide();
+                                Leaderboard.Scope = (LeaderboardScope)tab - 1;
                                 Leaderboard.Show();
                                 break;
                         }
@@ -62,20 +65,26 @@ namespace osu.Game.Screens.Select
                 },
             });
 
-            Add(new Drawable[]
+            AddRange(new Drawable[]
             {
                 Details = new BeatmapDetails
                 {
                     RelativeSizeAxes = Axes.X,
-                    Masking = true,
-                    Height = 352,
                     Alpha = 0,
+                    Margin = new MarginPadding { Top = details_padding },
                 },
                 Leaderboard = new Leaderboard
                 {
                     RelativeSizeAxes = Axes.Both,
                 }
             });
+        }
+
+        protected override void UpdateAfterChildren()
+        {
+            base.UpdateAfterChildren();
+
+            Details.Height = Math.Min(DrawHeight - details_padding * 3 - BeatmapDetailAreaTabControl.HEIGHT, 450);
         }
     }
 }

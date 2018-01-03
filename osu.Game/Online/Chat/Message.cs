@@ -8,10 +8,10 @@ using osu.Game.Users;
 
 namespace osu.Game.Online.Chat
 {
-    public class Message
+    public class Message : IComparable<Message>, IEquatable<Message>
     {
         [JsonProperty(@"message_id")]
-        public readonly long Id;
+        public readonly long? Id;
 
         //todo: this should be inside sender.
         [JsonProperty(@"sender_id")]
@@ -22,6 +22,9 @@ namespace osu.Game.Online.Chat
 
         [JsonProperty(@"target_id")]
         public int TargetId;
+
+        [JsonProperty(@"is_action")]
+        public bool IsAction;
 
         [JsonProperty(@"timestamp")]
         public DateTimeOffset Timestamp;
@@ -37,17 +40,24 @@ namespace osu.Game.Online.Chat
         {
         }
 
-        public override bool Equals(object obj)
+        public Message(long? id)
         {
-            var objMessage = obj as Message;
-
-            return Id == objMessage?.Id;
+            Id = id;
         }
 
-        public override int GetHashCode()
+        public int CompareTo(Message other)
         {
-            return Id.GetHashCode();
+            if (!Id.HasValue)
+                return other.Id.HasValue ? 1 : Timestamp.CompareTo(other.Timestamp);
+            if (!other.Id.HasValue)
+                return -1;
+
+            return Id.Value.CompareTo(other.Id.Value);
         }
+
+        public virtual bool Equals(Message other) => Id == other?.Id;
+
+        public override int GetHashCode() => Id.GetHashCode();
     }
 
     public enum TargetType

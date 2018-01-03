@@ -6,18 +6,17 @@ using osu.Game.Graphics;
 
 namespace osu.Game.Overlays.Toolbar
 {
-    internal class ToolbarChatButton : ToolbarOverlayToggleButton
+    public class ToolbarChatButton : ToolbarOverlayToggleButton
     {
         public ToolbarChatButton()
         {
-            Icon = FontAwesome.fa_comments;
+            SetIcon(FontAwesome.fa_comments);
         }
 
-        [BackgroundDependencyLoader]
+        [BackgroundDependencyLoader(true)]
         private void load(ChatOverlay chat)
         {
             StateContainer = chat;
-            Action = chat.ToggleVisibility;
         }
     }
 }

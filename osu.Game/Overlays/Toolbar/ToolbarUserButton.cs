@@ -12,7 +12,7 @@ using OpenTK.Graphics;
 
 namespace osu.Game.Overlays.Toolbar
 {
-    internal class ToolbarUserButton : ToolbarButton, IOnlineComponent
+    public class ToolbarUserButton : ToolbarButton, IOnlineComponent
     {
         private readonly UpdateableAvatar avatar;
 
@@ -31,7 +31,7 @@ namespace osu.Game.Overlays.Toolbar
                 Anchor = Anchor.CentreLeft,
                 Origin = Anchor.CentreLeft,
                 CornerRadius = 4,
-                EdgeEffect = new EdgeEffect
+                EdgeEffect = new EdgeEffectParameters
                 {
                     Type = EdgeEffectType.Shadow,
                     Radius = 4,

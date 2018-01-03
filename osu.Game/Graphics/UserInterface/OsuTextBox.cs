@@ -3,7 +3,6 @@
 
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
-using osu.Framework.Graphics.Primitives;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Input;
@@ -46,11 +45,10 @@ namespace osu.Game.Graphics.UserInterface
             BorderColour = colour.Yellow;
         }
 
-        protected override bool OnFocus(InputState state)
+        protected override void OnFocus(InputState state)
         {
             BorderThickness = 3;
-
-            return base.OnFocus(state);
+            base.OnFocus(state);
         }
 
         protected override void OnFocusLost(InputState state)

@@ -9,26 +9,30 @@ using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
-using osu.Framework.Graphics.Transforms;
 using osu.Framework.Threading;
 using OpenTK;
 using OpenTK.Graphics;
-using osu.Game.Users;
+using osu.Game.Screens.Tournament.Teams;
 
 namespace osu.Game.Screens.Tournament
 {
     public class ScrollingTeamContainer : Container
     {
         public event Action OnScrollStarted;
-        public event Action<Country> OnSelected;
+        public event Action<DrawingsTeam> OnSelected;
 
-        private readonly List<Country> availableTeams = new List<Country>();
+        private readonly List<DrawingsTeam> availableTeams = new List<DrawingsTeam>();
 
         private readonly Container tracker;
 
+#pragma warning disable 649
+        // set via reflection.
         private float speed;
+#pragma warning restore 649
+
         private int expiredCount;
 
         private float offset;
@@ -64,7 +68,7 @@ namespace osu.Game.Screens.Tournament
                             Origin = Anchor.BottomCentre,
                             Size = new Vector2(2, 55),
 
-                            ColourInfo = ColourInfo.GradientVertical(Color4.Transparent, Color4.White)
+                            Colour = ColourInfo.GradientVertical(Color4.Transparent, Color4.White)
                         },
                         new Box
                         {
@@ -72,7 +76,7 @@ namespace osu.Game.Screens.Tournament
                             Origin = Anchor.TopCentre,
                             Size = new Vector2(2, 55),
 
-                            ColourInfo = ColourInfo.GradientVertical(Color4.White, Color4.Transparent)
+                            Colour = ColourInfo.GradientVertical(Color4.White, Color4.Transparent)
                         }
                     }
                 }
@@ -83,6 +87,7 @@ namespace osu.Game.Screens.Tournament
         private ScrollState scrollState
         {
             get { return _scrollState; }
+
             set
             {
                 if (_scrollState == value)
@@ -158,7 +163,7 @@ namespace osu.Game.Screens.Tournament
             }
         }
 
-        public void AddTeam(Country team)
+        public void AddTeam(DrawingsTeam team)
         {
             if (availableTeams.Contains(team))
                 return;
@@ -169,12 +174,12 @@ namespace osu.Game.Screens.Tournament
             scrollState = ScrollState.Idle;
         }
 
-        public void AddTeams(IEnumerable<Country> teams)
+        public void AddTeams(IEnumerable<DrawingsTeam> teams)
         {
             if (teams == null)
                 return;
 
-            foreach (Country t in teams)
+            foreach (DrawingsTeam t in teams)
                 AddTeam(t);
         }
 
@@ -185,7 +190,7 @@ namespace osu.Game.Screens.Tournament
             scrollState = ScrollState.Idle;
         }
 
-        public void RemoveTeam(Country team)
+        public void RemoveTeam(DrawingsTeam team)
         {
             availableTeams.Remove(team);
 
@@ -270,7 +275,7 @@ namespace osu.Game.Screens.Tournament
 
         private void addFlags()
         {
-            foreach (Country t in availableTeams)
+            foreach (DrawingsTeam t in availableTeams)
             {
                 Add(new ScrollingTeam(t)
                 {
@@ -295,7 +300,8 @@ namespace osu.Game.Screens.Tournament
             }
         }
 
-        private void speedTo(float value, double duration = 0, EasingTypes easing = EasingTypes.None) => TransformTo(() => speed, value, duration, easing, new TransformScrollSpeed());
+        private void speedTo(float value, double duration = 0, Easing easing = Easing.None) =>
+            this.TransformTo(nameof(speed), value, duration, easing);
 
         private enum ScrollState
         {
@@ -306,21 +312,12 @@ namespace osu.Game.Screens.Tournament
             Scrolling
         }
 
-        public class TransformScrollSpeed : TransformFloat
-        {
-            public override void Apply(Drawable d)
-            {
-                base.Apply(d);
-                ((ScrollingTeamContainer)d).speed = CurrentValue;
-            }
-        }
-
         public class ScrollingTeam : Container
         {
             public const float WIDTH = 58;
             public const float HEIGHT = 41;
 
-            public Country Team;
+            public DrawingsTeam Team;
 
             private readonly Sprite flagSprite;
             private readonly Box outline;
@@ -329,6 +326,7 @@ namespace osu.Game.Screens.Tournament
             public bool Selected
             {
                 get { return selected; }
+
                 set
                 {
                     selected = value;
@@ -340,7 +338,7 @@ namespace osu.Game.Screens.Tournament
                 }
             }
 
-            public ScrollingTeam(Country team)
+            public ScrollingTeam(DrawingsTeam team)
             {
                 Team = team;
 

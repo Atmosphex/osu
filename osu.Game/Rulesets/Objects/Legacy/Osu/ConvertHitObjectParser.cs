@@ -2,16 +2,16 @@
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
 using OpenTK;
-using osu.Game.Audio;
 using osu.Game.Rulesets.Objects.Types;
 using System.Collections.Generic;
+using osu.Game.Audio;
 
 namespace osu.Game.Rulesets.Objects.Legacy.Osu
 {
     /// <summary>
     /// A HitObjectParser to parse legacy osu! Beatmaps.
     /// </summary>
-    internal class ConvertHitObjectParser : Legacy.ConvertHitObjectParser
+    public class ConvertHitObjectParser : Legacy.ConvertHitObjectParser
     {
         protected override HitObject CreateHit(Vector2 position, bool newCombo)
         {
@@ -22,7 +22,7 @@ namespace osu.Game.Rulesets.Objects.Legacy.Osu
             };
         }
 
-        protected override HitObject CreateSlider(Vector2 position, bool newCombo, List<Vector2> controlPoints, double length, CurveType curveType, int repeatCount, List<SampleInfoList> repeatSamples)
+        protected override HitObject CreateSlider(Vector2 position, bool newCombo, List<Vector2> controlPoints, double length, CurveType curveType, int repeatCount, List<List<SampleInfo>> repeatSamples)
         {
             return new ConvertSlider
             {
@@ -43,6 +43,11 @@ namespace osu.Game.Rulesets.Objects.Legacy.Osu
                 Position = position,
                 EndTime = endTime
             };
+        }
+
+        protected override HitObject CreateHold(Vector2 position, bool newCombo, double endTime)
+        {
+            return null;
         }
     }
 }

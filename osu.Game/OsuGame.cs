@@ -8,30 +8,30 @@ using osu.Game.Configuration;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Game.Overlays;
-using osu.Framework.Input;
-using osu.Game.Input;
-using OpenTK.Input;
 using osu.Framework.Logging;
 using osu.Game.Graphics.UserInterface.Volume;
 using osu.Framework.Allocation;
-using osu.Framework.Timing;
 using osu.Game.Overlays.Toolbar;
 using osu.Game.Screens;
 using osu.Game.Screens.Menu;
 using OpenTK;
 using System.Linq;
-using osu.Framework.Graphics.Primitives;
+using System.Threading;
 using System.Threading.Tasks;
+using osu.Framework.Input.Bindings;
+using osu.Framework.Platform;
 using osu.Framework.Threading;
-using osu.Game.Database;
 using osu.Game.Graphics;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Overlays.Notifications;
+using osu.Game.Rulesets;
 using osu.Game.Screens.Play;
+using osu.Game.Input.Bindings;
+using OpenTK.Graphics;
 
 namespace osu.Game
 {
-    public class OsuGame : OsuGameBase
+    public class OsuGame : OsuGameBase, IKeyBindingHandler<GlobalAction>
     {
         public Toolbar Toolbar;
 
@@ -39,9 +39,19 @@ namespace osu.Game
 
         private MusicController musicController;
 
-        private NotificationManager notificationManager;
+        private NotificationOverlay notifications;
 
         private DialogOverlay dialogOverlay;
+
+        private DirectOverlay direct;
+
+        private SocialOverlay social;
+
+        private UserProfileOverlay userProfile;
+
+        private BeatmapSetOverlay beatmapSetOverlay;
+
+        public virtual Storage GetStorageForStableInstall() => null;
 
         private Intro intro
         {
@@ -54,6 +64,10 @@ namespace osu.Game
             }
         }
 
+        public float ToolbarOffset => Toolbar.Position.Y + Toolbar.DrawHeight;
+
+        public readonly BindableBool ShowOverlays = new BindableBool();
+
         private OsuScreen screenStack;
 
         private VolumeControl volume;
@@ -63,18 +77,27 @@ namespace osu.Game
 
         private readonly string[] args;
 
-        private OptionsOverlay options;
+        private SettingsOverlay settings;
 
         public OsuGame(string[] args = null)
         {
             this.args = args;
         }
 
-        public void ToggleOptions() => options.ToggleVisibility();
+        public void ToggleSettings() => settings.ToggleVisibility();
+
+        public void ToggleDirect() => direct.ToggleVisibility();
+
+        private DependencyContainer dependencies;
+
+        protected override IReadOnlyDependencyContainer CreateLocalDependencies(IReadOnlyDependencyContainer parent) =>
+            dependencies = new DependencyContainer(base.CreateLocalDependencies(parent));
 
         [BackgroundDependencyLoader]
-        private void load()
+        private void load(FrameworkConfigManager frameworkConfig)
         {
+            this.frameworkConfig = frameworkConfig;
+
             if (!Host.IsPrimaryInstance)
             {
                 Logger.Log(@"osu! does not support multiple running instances.", LoggingTarget.Runtime, LogLevel.Error);
@@ -84,13 +107,13 @@ namespace osu.Game
             if (args?.Length > 0)
             {
                 var paths = args.Where(a => !a.StartsWith(@"-"));
-                Task.Run(() => BeatmapDatabase.Import(paths));
+                Task.Run(() => BeatmapManager.Import(paths.ToArray()));
             }
 
-            Dependencies.Cache(this);
+            dependencies.Cache(this);
 
-            configRuleset = LocalConfig.GetBindable<int>(OsuConfig.Ruleset);
-            Ruleset.Value = RulesetDatabase.GetRuleset(configRuleset.Value);
+            configRuleset = LocalConfig.GetBindable<int>(OsuSetting.Ruleset);
+            Ruleset.Value = RulesetStore.GetRuleset(configRuleset.Value) ?? RulesetStore.AvailableRulesets.First();
             Ruleset.ValueChanged += r => configRuleset.Value = r.ID ?? 0;
         }
 
@@ -111,14 +134,13 @@ namespace osu.Game
             if (!menu.IsCurrentScreen)
             {
                 menu.MakeCurrent();
-                Delay(500);
-                scoreLoad = Schedule(() => LoadScore(s));
+                this.Delay(500).Schedule(() => LoadScore(s), out scoreLoad);
                 return;
             }
 
             if (s.Beatmap == null)
             {
-                notificationManager.Post(new SimpleNotification
+                notifications.Post(new SimpleNotification
                 {
                     Text = @"Tried to load a score for a beatmap we don't have!",
                     Icon = FontAwesome.fa_life_saver,
@@ -126,7 +148,7 @@ namespace osu.Game
                 return;
             }
 
-            Beatmap.Value = BeatmapDatabase.GetWorkingBeatmap(s.Beatmap);
+            Beatmap.Value = BeatmapManager.GetWorkingBeatmap(s.Beatmap);
 
             menu.Push(new PlayerLoader(new ReplayPlayer(s.Replay)));
         }
@@ -135,159 +157,254 @@ namespace osu.Game
         {
             base.LoadComplete();
 
-            Add(new Drawable[] {
+            // hook up notifications to components.
+            BeatmapManager.PostNotification = n => notifications?.Post(n);
+            BeatmapManager.GetStableStorage = GetStorageForStableInstall;
+
+            AddRange(new Drawable[]
+            {
                 new VolumeControlReceptor
                 {
                     RelativeSizeAxes = Axes.Both,
-                    ActionRequested = delegate(InputState state) { volume.Adjust(state); }
+                    ActionRequested = action => volume.Adjust(action)
                 },
-                mainContent = new Container
-                {
-                    RelativeSizeAxes = Axes.Both,
-                },
-                volume = new VolumeControl(),
-                overlayContent = new Container{ RelativeSizeAxes = Axes.Both },
-                new GlobalHotkeys //exists because UserInputManager is at a level below us.
-                {
-                    Handler = globalHotkeyPressed
-                }
+                mainContent = new Container { RelativeSizeAxes = Axes.Both },
+                overlayContent = new Container { RelativeSizeAxes = Axes.Both, Depth = float.MinValue },
             });
 
-            LoadComponentAsync(screenStack = new Loader(), d =>
+            loadComponentSingleFile(screenStack = new Loader(), d =>
             {
                 screenStack.ModePushed += screenAdded;
                 screenStack.Exited += screenRemoved;
                 mainContent.Add(screenStack);
             });
 
-            //overlay elements
-            LoadComponentAsync(chat = new ChatOverlay { Depth = 0 }, overlayContent.Add);
-            LoadComponentAsync(options = new OptionsOverlay { Depth = -1 }, overlayContent.Add);
-            LoadComponentAsync(musicController = new MusicController
+            loadComponentSingleFile(Toolbar = new Toolbar
             {
-                Depth = -2,
+                Depth = -5,
+                OnHome = delegate
+                {
+                    hideAllOverlays();
+                    intro?.ChildScreen?.MakeCurrent();
+                },
+            }, overlayContent.Add);
+
+            loadComponentSingleFile(volume = new VolumeControl(), Add);
+            loadComponentSingleFile(new OnScreenDisplay(), Add);
+
+            //overlay elements
+            loadComponentSingleFile(direct = new DirectOverlay { Depth = -1 }, mainContent.Add);
+            loadComponentSingleFile(social = new SocialOverlay { Depth = -1 }, mainContent.Add);
+            loadComponentSingleFile(chat = new ChatOverlay { Depth = -1 }, mainContent.Add);
+            loadComponentSingleFile(settings = new MainSettings
+            {
+                GetToolbarHeight = () => ToolbarOffset,
+                Depth = -1
+            }, overlayContent.Add);
+            loadComponentSingleFile(userProfile = new UserProfileOverlay { Depth = -2 }, mainContent.Add);
+            loadComponentSingleFile(beatmapSetOverlay = new BeatmapSetOverlay { Depth = -3 }, mainContent.Add);
+            loadComponentSingleFile(musicController = new MusicController
+            {
+                Depth = -4,
                 Position = new Vector2(0, Toolbar.HEIGHT),
                 Anchor = Anchor.TopRight,
                 Origin = Anchor.TopRight,
             }, overlayContent.Add);
 
-            LoadComponentAsync(notificationManager = new NotificationManager
+            loadComponentSingleFile(notifications = new NotificationOverlay
             {
-                Depth = -2,
+                GetToolbarHeight = () => ToolbarOffset,
+                Depth = -4,
                 Anchor = Anchor.TopRight,
                 Origin = Anchor.TopRight,
             }, overlayContent.Add);
 
-            LoadComponentAsync(dialogOverlay = new DialogOverlay
+            loadComponentSingleFile(dialogOverlay = new DialogOverlay
             {
-                Depth = -4,
+                Depth = -6,
             }, overlayContent.Add);
 
-            Logger.NewEntry += entry =>
-            {
-                if (entry.Level < LogLevel.Important) return;
+            forwardLoggedErrorsToNotifications();
 
-                notificationManager.Post(new SimpleNotification
+            dependencies.Cache(settings);
+            dependencies.Cache(social);
+            dependencies.Cache(direct);
+            dependencies.Cache(chat);
+            dependencies.Cache(userProfile);
+            dependencies.Cache(musicController);
+            dependencies.Cache(beatmapSetOverlay);
+            dependencies.Cache(notifications);
+            dependencies.Cache(dialogOverlay);
+
+            // ensure only one of these overlays are open at once.
+            var singleDisplayOverlays = new OverlayContainer[] { chat, social, direct };
+            foreach (var overlay in singleDisplayOverlays)
+            {
+                overlay.StateChanged += state =>
                 {
-                    Text = $@"{entry.Level}: {entry.Message}"
-                });
-            };
+                    if (state == Visibility.Hidden) return;
 
-            Dependencies.Cache(options);
-            Dependencies.Cache(chat);
-            Dependencies.Cache(musicController);
-            Dependencies.Cache(notificationManager);
-            Dependencies.Cache(dialogOverlay);
+                    foreach (var c in singleDisplayOverlays)
+                    {
+                        if (c == overlay) continue;
+                        c.State = Visibility.Hidden;
+                    }
+                };
+            }
 
-            LoadComponentAsync(Toolbar = new Toolbar
+            // eventually informational overlays should be displayed in a stack, but for now let's only allow one to stay open at a time.
+            var informationalOverlays = new OverlayContainer[] { beatmapSetOverlay, userProfile };
+            foreach (var overlay in informationalOverlays)
             {
-                Depth = -3,
-                OnHome = delegate { intro?.ChildScreen?.MakeCurrent(); },
-            }, overlayContent.Add);
-
-            options.StateChanged += delegate
-            {
-                switch (options.State)
+                overlay.StateChanged += state =>
                 {
-                    case Visibility.Hidden:
-                        intro.MoveToX(0, OptionsOverlay.TRANSITION_LENGTH, EasingTypes.OutQuint);
-                        break;
-                    case Visibility.Visible:
-                        intro.MoveToX(OptionsOverlay.SIDEBAR_WIDTH / 2, OptionsOverlay.TRANSITION_LENGTH, EasingTypes.OutQuint);
-                        break;
+                    if (state == Visibility.Hidden) return;
+
+                    foreach (var c in informationalOverlays)
+                    {
+                        if (c == overlay) continue;
+                        c.State = Visibility.Hidden;
+                    }
+                };
+            }
+
+            void updateScreenOffset()
+            {
+                float offset = 0;
+
+                if (settings.State == Visibility.Visible)
+                    offset += ToolbarButton.WIDTH / 2;
+                if (notifications.State == Visibility.Visible)
+                    offset -= ToolbarButton.WIDTH / 2;
+
+                screenStack.MoveToX(offset, SettingsOverlay.TRANSITION_LENGTH, Easing.OutQuint);
+            }
+
+            settings.StateChanged += _ => updateScreenOffset();
+            notifications.StateChanged += _ => updateScreenOffset();
+
+            notifications.Enabled.BindTo(ShowOverlays);
+
+            ShowOverlays.ValueChanged += show =>
+            {
+                //central game screen change logic.
+                if (!show)
+                {
+                    hideAllOverlays();
+                    musicController.State = Visibility.Hidden;
+                    Toolbar.State = Visibility.Hidden;
                 }
+                else
+                    Toolbar.State = Visibility.Visible;
             };
 
             Cursor.State = Visibility.Hidden;
         }
 
-        private bool globalHotkeyPressed(InputState state, KeyDownEventArgs args)
+        private void forwardLoggedErrorsToNotifications()
         {
-            if (args.Repeat || intro == null) return false;
+            int recentErrorCount = 0;
 
-            switch (args.Key)
+            const double debounce = 5000;
+
+            Logger.NewEntry += entry =>
             {
-                case Key.F8:
-                    chat.ToggleVisibility();
-                    return true;
-                case Key.PageUp:
-                case Key.PageDown:
-                    var swClock = (Clock as ThrottledFrameClock)?.Source as StopwatchClock;
-                    if (swClock == null) return false;
+                if (entry.Level < LogLevel.Error || entry.Target == null) return;
 
-                    swClock.Rate *= args.Key == Key.PageUp ? 1.1f : 0.9f;
-                    Logger.Log($@"Adjusting game clock to {swClock.Rate}", LoggingTarget.Debug);
-                    return true;
+                if (recentErrorCount < 2)
+                {
+                    notifications.Post(new SimpleNotification
+                    {
+                        Icon = FontAwesome.fa_bomb,
+                        Text = (recentErrorCount == 0 ? entry.Message : "Subsequent errors occurred and have been logged.") + "\nClick to view log files.",
+                        Activated = () =>
+                        {
+                            Host.Storage.GetStorageForDirectory("logs").OpenInNativeExplorer();
+                            return true;
+                        }
+                    });
+                }
+
+                Interlocked.Increment(ref recentErrorCount);
+
+                Scheduler.AddDelayed(() => Interlocked.Decrement(ref recentErrorCount), debounce);
+            };
+        }
+
+        private Task asyncLoadStream;
+        private int visibleOverlayCount;
+
+        private void loadComponentSingleFile<T>(T d, Action<T> add)
+            where T : Drawable
+        {
+            var focused = d as FocusedOverlayContainer;
+            if (focused != null)
+            {
+                focused.StateChanged += s =>
+                {
+                    visibleOverlayCount += s == Visibility.Visible ? 1 : -1;
+                    screenStack.FadeColour(visibleOverlayCount > 0 ? OsuColour.Gray(0.5f) : Color4.White, 500, Easing.OutQuint);
+                };
             }
 
-            if (state.Keyboard.ControlPressed)
+            // schedule is here to ensure that all component loads are done after LoadComplete is run (and thus all dependencies are cached).
+            // with some better organisation of LoadComplete to do construction and dependency caching in one step, followed by calls to loadComponentSingleFile,
+            // we could avoid the need for scheduling altogether.
+            Schedule(() => { asyncLoadStream = asyncLoadStream?.ContinueWith(t => LoadComponentAsync(d, add).Wait()) ?? LoadComponentAsync(d, add); });
+        }
+
+        public bool OnPressed(GlobalAction action)
+        {
+            if (intro == null) return false;
+
+            switch (action)
             {
-                switch (args.Key)
-                {
-                    case Key.T:
-                        Toolbar.ToggleVisibility();
-                        return true;
-                    case Key.O:
-                        options.ToggleVisibility();
-                        return true;
-                }
+                case GlobalAction.ToggleChat:
+                    chat.ToggleVisibility();
+                    return true;
+                case GlobalAction.ToggleSocial:
+                    social.ToggleVisibility();
+                    return true;
+                case GlobalAction.ResetInputSettings:
+                    var sensitivity = frameworkConfig.GetBindable<double>(FrameworkSetting.CursorSensitivity);
+
+                    sensitivity.Disabled = false;
+                    sensitivity.Value = 1;
+                    sensitivity.Disabled = true;
+
+                    frameworkConfig.Set(FrameworkSetting.ActiveInputHandlers, string.Empty);
+                    return true;
+                case GlobalAction.ToggleToolbar:
+                    Toolbar.ToggleVisibility();
+                    return true;
+                case GlobalAction.ToggleSettings:
+                    settings.ToggleVisibility();
+                    return true;
+                case GlobalAction.ToggleDirect:
+                    direct.ToggleVisibility();
+                    return true;
             }
 
             return false;
         }
 
-        public event Action<Screen> ScreenChanged;
+        public bool OnReleased(GlobalAction action) => false;
 
         private Container mainContent;
 
         private Container overlayContent;
 
         private OsuScreen currentScreen;
+        private FrameworkConfigManager frameworkConfig;
 
-        private void screenChanged(Screen newScreen)
+        private void hideAllOverlays()
         {
-            currentScreen = newScreen as OsuScreen;
-
-            if (currentScreen == null)
-            {
-                Exit();
-                return;
-            }
-
-            //central game screen change logic.
-            if (!currentScreen.ShowOverlays)
-            {
-                options.State = Visibility.Hidden;
-                Toolbar.State = Visibility.Hidden;
-                musicController.State = Visibility.Hidden;
-                chat.State = Visibility.Hidden;
-            }
-            else
-            {
-                Toolbar.State = Visibility.Visible;
-            }
-
-            ScreenChanged?.Invoke(newScreen);
+            settings.State = Visibility.Hidden;
+            chat.State = Visibility.Hidden;
+            direct.State = Visibility.Hidden;
+            social.State = Visibility.Hidden;
+            userProfile.State = Visibility.Hidden;
+            notifications.State = Visibility.Hidden;
         }
 
         protected override bool OnExiting()
@@ -321,23 +438,32 @@ namespace osu.Game
         {
             base.UpdateAfterChildren();
 
-            if (intro?.ChildScreen != null)
-                intro.ChildScreen.Padding = new MarginPadding { Top = Toolbar.Position.Y + Toolbar.DrawHeight };
+            // we only want to apply these restrictions when we are inside a screen stack.
+            // the use case for not applying is in visual/unit tests.
+            bool applyRestrictions = !currentScreen?.AllowBeatmapRulesetChange ?? false;
+
+            Ruleset.Disabled = applyRestrictions;
+            Beatmap.Disabled = applyRestrictions;
+
+            mainContent.Padding = new MarginPadding { Top = ToolbarOffset };
 
             Cursor.State = currentScreen?.HasLocalCursorDisplayed == false ? Visibility.Visible : Visibility.Hidden;
         }
 
         private void screenAdded(Screen newScreen)
         {
+            currentScreen = (OsuScreen)newScreen;
+
             newScreen.ModePushed += screenAdded;
             newScreen.Exited += screenRemoved;
-
-            screenChanged(newScreen);
         }
 
         private void screenRemoved(Screen newScreen)
         {
-            screenChanged(newScreen);
+            currentScreen = (OsuScreen)newScreen;
+
+            if (newScreen == null)
+                Exit();
         }
     }
 }

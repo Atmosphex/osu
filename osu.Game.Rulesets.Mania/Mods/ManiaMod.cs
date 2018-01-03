@@ -4,6 +4,16 @@
 using osu.Game.Graphics;
 using osu.Game.Rulesets.Mods;
 using System;
+using System.Linq;
+using osu.Framework.Extensions.IEnumerableExtensions;
+using osu.Framework.MathUtils;
+using osu.Game.Beatmaps;
+using osu.Game.Rulesets.Mania.Objects;
+using osu.Game.Rulesets.Mania.Replays;
+using osu.Game.Rulesets.Mania.UI;
+using osu.Game.Rulesets.Scoring;
+using osu.Game.Users;
+using osu.Game.Rulesets.UI;
 
 namespace osu.Game.Rulesets.Mania.Mods
 {
@@ -32,6 +42,11 @@ namespace osu.Game.Rulesets.Mania.Mods
     public class ManiaModSuddenDeath : ModSuddenDeath
     {
 
+    }
+
+    public class ManiaModDaycore : ModDaycore
+    {
+        public override double ScoreMultiplier => 0.3;
     }
 
     public class ManiaModDoubleTime : ModDoubleTime
@@ -63,21 +78,36 @@ namespace osu.Game.Rulesets.Mania.Mods
     public class ManiaModFadeIn : Mod
     {
         public override string Name => "FadeIn";
+        public override string ShortenedName => "FI";
         public override FontAwesome Icon => FontAwesome.fa_osu_mod_hidden;
+        public override ModType Type => ModType.DifficultyIncrease;
         public override double ScoreMultiplier => 1;
         public override bool Ranked => true;
         public override Type[] IncompatibleMods => new[] { typeof(ModFlashlight) };
     }
 
-    public class ManiaModRandom : Mod
+    public class ManiaModRandom : Mod, IApplicableToRulesetContainer<ManiaHitObject>
     {
         public override string Name => "Random";
+        public override string ShortenedName => "RD";
+        public override FontAwesome Icon => FontAwesome.fa_osu_dice;
         public override string Description => @"Shuffle around the notes!";
         public override double ScoreMultiplier => 1;
+
+        public void ApplyToRulesetContainer(RulesetContainer<ManiaHitObject> rulesetContainer)
+        {
+            int availableColumns = ((ManiaRulesetContainer)rulesetContainer).AvailableColumns;
+            var shuffledColumns = Enumerable.Range(0, availableColumns).OrderBy(item => RNG.Next()).ToList();
+
+            rulesetContainer.Objects.OfType<ManiaHitObject>().ForEach(h => h.Column = shuffledColumns[h.Column]);
+        }
     }
 
     public abstract class ManiaKeyMod : Mod
     {
+        // TODO: implement using the IApplicable interface. Haven't done so yet because KeyCount isn't even hooked up at the moment.
+
+        public override string ShortenedName => Name;
         public abstract int KeyCount { get; }
         public override double ScoreMultiplier => 1; // TODO: Implement the mania key mod score multiplier
         public override bool Ranked => true;
@@ -140,8 +170,18 @@ namespace osu.Game.Rulesets.Mania.Mods
     public class ManiaModKeyCoop : Mod
     {
         public override string Name => "KeyCoop";
+        public override string ShortenedName => "2P";
         public override string Description => @"Double the key amount, double the fun!";
         public override double ScoreMultiplier => 1;
         public override bool Ranked => true;
+    }
+
+    public class ManiaModAutoplay : ModAutoplay<ManiaHitObject>
+    {
+        protected override Score CreateReplayScore(Beatmap<ManiaHitObject> beatmap) => new Score
+        {
+            User = new User { Username = "osu!topus!" },
+            Replay = new ManiaAutoGenerator(beatmap).Generate(),
+        };
     }
 }

@@ -1,14 +1,17 @@
 ﻿// Copyright (c) 2007-2017 ppy Pty Ltd <contact@ppy.sh>.
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
+using System.Linq;
 using OpenTK.Input;
 using osu.Framework.Allocation;
+using osu.Framework.Audio;
+using osu.Framework.Audio.Sample;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Primitives;
 using osu.Framework.Screens;
 using osu.Game.Beatmaps;
 using osu.Game.Graphics;
+using osu.Game.Overlays;
 using osu.Game.Overlays.Mods;
 using osu.Game.Screens.Edit;
 using osu.Game.Screens.Play;
@@ -20,7 +23,8 @@ namespace osu.Game.Screens.Select
     {
         private OsuScreen player;
         private readonly ModSelectOverlay modSelect;
-        private readonly BeatmapDetailArea beatmapDetails;
+        protected readonly BeatmapDetailArea BeatmapDetails;
+        private bool removeAutoModOnResume;
 
         public PlaySongSelect()
         {
@@ -31,19 +35,23 @@ namespace osu.Game.Screens.Select
                 Anchor = Anchor.BottomCentre,
             });
 
-            LeftContent.Add(beatmapDetails = new BeatmapDetailArea
+            LeftContent.Add(BeatmapDetails = new BeatmapDetailArea
             {
                 RelativeSizeAxes = Axes.Both,
                 Padding = new MarginPadding { Top = 10, Right = 5 },
             });
 
-            beatmapDetails.Leaderboard.ScoreSelected += s => Push(new Results(s));
+            BeatmapDetails.Leaderboard.ScoreSelected += s => Push(new Results(s));
         }
 
-        [BackgroundDependencyLoader]
-        private void load(OsuColour colours)
+        private SampleChannel sampleConfirm;
+
+        [BackgroundDependencyLoader(true)]
+        private void load(OsuColour colours, AudioManager audio, BeatmapManager beatmaps, DialogOverlay dialogOverlay)
         {
-            Footer.AddButton(@"mods", colours.Yellow, modSelect.ToggleVisibility, Key.F1, float.MaxValue);
+            sampleConfirm = audio.Sample.Get(@"SongSelect/confirm-selection");
+
+            Footer.AddButton(@"mods", colours.Yellow, modSelect, Key.F1, float.MaxValue);
 
             BeatmapOptions.AddButton(@"Remove", @"from unplayed", FontAwesome.fa_times_circle_o, colours.Purple, null, Key.Number1);
             BeatmapOptions.AddButton(@"Clear", @"local scores", FontAwesome.fa_eraser, colours.Purple, null, Key.Number2);
@@ -52,21 +60,51 @@ namespace osu.Game.Screens.Select
                 ValidForResume = false;
                 Push(new Editor());
             }, Key.Number3);
+
+            if (dialogOverlay != null)
+            {
+                Schedule(() =>
+                {
+                    // if we have no beatmaps but osu-stable is found, let's prompt the user to import.
+                    if (!beatmaps.GetAllUsableBeatmapSets().Any() && beatmaps.StableInstallationAvailable)
+                        dialogOverlay.Push(new ImportFromStablePopup(() => beatmaps.ImportFromStable()));
+                });
+            }
         }
 
-        protected override void OnBeatmapChanged(WorkingBeatmap beatmap)
+        protected override void UpdateBeatmap(WorkingBeatmap beatmap)
         {
-            beatmap?.Mods.BindTo(modSelect.SelectedMods);
+            base.UpdateBeatmap(beatmap);
 
-            beatmapDetails.Beatmap = beatmap;
+            beatmap.Mods.BindTo(modSelect.SelectedMods);
 
-            base.OnBeatmapChanged(beatmap);
+            BeatmapDetails.Beatmap = beatmap;
+
+            if (beatmap.Track != null)
+                beatmap.Track.Looping = true;
         }
 
         protected override void OnResuming(Screen last)
         {
             player = null;
+
+            if (removeAutoModOnResume)
+            {
+                var autoType = Ruleset.Value.CreateInstance().GetAutoplayMod().GetType();
+                modSelect.SelectedMods.Value = modSelect.SelectedMods.Value.Where(m => m.GetType() != autoType).ToArray();
+                removeAutoModOnResume = false;
+            }
+
+            Beatmap.Value.Track.Looping = true;
+
             base.OnResuming(last);
+        }
+
+        protected override void OnSuspending(Screen next)
+        {
+            modSelect.Hide();
+
+            base.OnSuspending(next);
         }
 
         protected override bool OnExiting(Screen next)
@@ -77,17 +115,44 @@ namespace osu.Game.Screens.Select
                 return true;
             }
 
-            return base.OnExiting(next);
+            if (base.OnExiting(next))
+                return true;
+
+            if (Beatmap.Value.Track != null)
+                Beatmap.Value.Track.Looping = false;
+
+            return false;
         }
 
-        protected override void OnSelected()
+        protected override bool OnSelectionFinalised()
         {
-            if (player != null) return;
+            if (player != null) return false;
 
-            LoadComponentAsync(player = new PlayerLoader(new Player
+            // Ctrl+Enter should start map with autoplay enabled.
+            if (GetContainingInputManager().CurrentState?.Keyboard.ControlPressed == true)
             {
-                Beatmap = Beatmap, //eagerly set this so it's present before push.
-            }), l => Push(player));
+                var auto = Ruleset.Value.CreateInstance().GetAutoplayMod();
+                var autoType = auto.GetType();
+
+                var mods = modSelect.SelectedMods.Value;
+                if (mods.All(m => m.GetType() != autoType))
+                {
+                    modSelect.SelectedMods.Value = mods.Concat(new[] { auto });
+                    removeAutoModOnResume = true;
+                }
+            }
+
+            Beatmap.Value.Track.Looping = false;
+            Beatmap.Disabled = true;
+
+            sampleConfirm?.Play();
+
+            LoadComponentAsync(player = new PlayerLoader(new Player()), l =>
+            {
+                if (IsCurrentScreen) Push(player);
+            });
+
+            return true;
         }
     }
 }

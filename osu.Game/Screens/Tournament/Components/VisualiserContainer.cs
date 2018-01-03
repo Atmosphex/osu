@@ -12,7 +12,7 @@ using System.Linq;
 
 namespace osu.Game.Screens.Tournament.Components
 {
-    internal class VisualiserContainer : Container
+    public class VisualiserContainer : Container
     {
         /// <summary>
         /// Number of lines in the visualiser.
@@ -84,7 +84,7 @@ namespace osu.Game.Screens.Tournament.Components
             {
                 base.UpdateAfterChildren();
 
-                while (Children.Count() < 3)
+                while (Children.Count < 3)
                     addLine();
 
                 float pos = leftPos;

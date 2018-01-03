@@ -2,14 +2,14 @@
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
 using OpenTK;
-using osu.Game.Beatmaps.Timing;
 using osu.Game.Rulesets.Objects.Types;
 using System;
 using System.Collections.Generic;
 using osu.Game.Rulesets.Objects;
-using osu.Game.Database;
 using System.Linq;
 using osu.Game.Audio;
+using osu.Game.Beatmaps;
+using osu.Game.Beatmaps.ControlPoints;
 
 namespace osu.Game.Rulesets.Osu.Objects
 {
@@ -45,7 +45,19 @@ namespace osu.Game.Rulesets.Osu.Objects
             set { Curve.Distance = value; }
         }
 
-        public List<SampleInfoList> RepeatSamples { get; set; } = new List<SampleInfoList>();
+        /// <summary>
+        /// The position of the cursor at the point of completion of this <see cref="Slider"/> if it was hit
+        /// with as few movements as possible. This is set and used by difficulty calculation.
+        /// </summary>
+        internal Vector2? LazyEndPosition;
+
+        /// <summary>
+        /// The distance travelled by the cursor upon completion of this <see cref="Slider"/> if it was hit
+        /// with as few movements as possible. This is set and used by difficulty calculation.
+        /// </summary>
+        internal float LazyTravelDistance;
+
+        public List<List<SampleInfo>> RepeatSamples { get; set; } = new List<List<SampleInfo>>();
         public int RepeatCount { get; set; } = 1;
 
         private int stackHeight;
@@ -62,13 +74,16 @@ namespace osu.Game.Rulesets.Osu.Objects
         public double Velocity;
         public double TickDistance;
 
-        public override void ApplyDefaults(TimingInfo timing, BeatmapDifficulty difficulty)
+        protected override void ApplyDefaultsToSelf(ControlPointInfo controlPointInfo, BeatmapDifficulty difficulty)
         {
-            base.ApplyDefaults(timing, difficulty);
+            base.ApplyDefaultsToSelf(controlPointInfo, difficulty);
 
-            double scoringDistance = base_scoring_distance * difficulty.SliderMultiplier / timing.SpeedMultiplierAt(StartTime);
+            TimingControlPoint timingPoint = controlPointInfo.TimingPointAt(StartTime);
+            DifficultyControlPoint difficultyPoint = controlPointInfo.DifficultyPointAt(StartTime);
 
-            Velocity = scoringDistance / timing.BeatLengthAt(StartTime);
+            double scoringDistance = base_scoring_distance * difficulty.SliderMultiplier * difficultyPoint.SpeedMultiplier;
+
+            Velocity = scoringDistance / timingPoint.BeatLength;
             TickDistance = scoringDistance / difficulty.SliderTickRate;
         }
 
@@ -84,48 +99,74 @@ namespace osu.Game.Rulesets.Osu.Objects
 
         public int RepeatAt(double progress) => (int)(progress * RepeatCount);
 
-        public IEnumerable<SliderTick> Ticks
+        protected override void CreateNestedHitObjects()
         {
-            get
+            base.CreateNestedHitObjects();
+
+            createTicks();
+            createRepeatPoints();
+        }
+
+        private void createTicks()
+        {
+            if (TickDistance == 0) return;
+
+            var length = Curve.Distance;
+            var tickDistance = Math.Min(TickDistance, length);
+            var repeatDuration = length / Velocity;
+
+            var minDistanceFromEnd = Velocity * 0.01;
+
+            for (var repeat = 0; repeat < RepeatCount; repeat++)
             {
-                if (TickDistance == 0) yield break;
+                var repeatStartTime = StartTime + repeat * repeatDuration;
+                var reversed = repeat % 2 == 1;
 
-                var length = Curve.Distance;
-                var tickDistance = Math.Min(TickDistance, length);
-                var repeatDuration = length / Velocity;
-
-                var minDistanceFromEnd = Velocity * 0.01;
-
-                for (var repeat = 0; repeat < RepeatCount; repeat++)
+                for (var d = tickDistance; d <= length; d += tickDistance)
                 {
-                    var repeatStartTime = StartTime + repeat * repeatDuration;
-                    var reversed = repeat % 2 == 1;
+                    if (d > length - minDistanceFromEnd)
+                        break;
 
-                    for (var d = tickDistance; d <= length; d += tickDistance)
+                    var distanceProgress = d / length;
+                    var timeProgress = reversed ? 1 - distanceProgress : distanceProgress;
+
+                    AddNested(new SliderTick
                     {
-                        if (d > length - minDistanceFromEnd)
-                            break;
-
-                        var distanceProgress = d / length;
-                        var timeProgress = reversed ? 1 - distanceProgress : distanceProgress;
-
-                        yield return new SliderTick
+                        RepeatIndex = repeat,
+                        StartTime = repeatStartTime + timeProgress * repeatDuration,
+                        Position = Curve.PositionAt(distanceProgress),
+                        StackHeight = StackHeight,
+                        Scale = Scale,
+                        ComboColour = ComboColour,
+                        Samples = new List<SampleInfo>(Samples.Select(s => new SampleInfo
                         {
-                            RepeatIndex = repeat,
-                            StartTime = repeatStartTime + timeProgress * repeatDuration,
-                            Position = Curve.PositionAt(distanceProgress),
-                            StackHeight = StackHeight,
-                            Scale = Scale,
-                            ComboColour = ComboColour,
-                            Samples = new SampleInfoList(Samples.Select(s => new SampleInfo
-                            {
-                                Bank = s.Bank,
-                                Name = @"slidertick",
-                                Volume = s.Volume
-                            }))
-                        };
-                    }
+                            Bank = s.Bank,
+                            Name = @"slidertick",
+                            Volume = s.Volume
+                        }))
+                    });
                 }
+            }
+        }
+
+        private void createRepeatPoints()
+        {
+            var repeatDuration = Distance / Velocity;
+
+            for (var repeat = 1; repeat < RepeatCount; repeat++)
+            {
+                var repeatStartTime = StartTime + repeat * repeatDuration;
+
+                AddNested(new RepeatPoint
+                {
+                    RepeatIndex = repeat,
+                    StartTime = repeatStartTime,
+                    Position = Curve.PositionAt(repeat % 2),
+                    StackHeight = StackHeight,
+                    Scale = Scale,
+                    ComboColour = ComboColour,
+                    Samples = new List<SampleInfo>(RepeatSamples[repeat])
+                });
             }
         }
     }

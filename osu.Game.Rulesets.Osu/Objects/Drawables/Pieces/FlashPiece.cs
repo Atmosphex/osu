@@ -3,8 +3,8 @@
 
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Sprites;
 using OpenTK;
+using osu.Framework.Graphics.Shapes;
 
 namespace osu.Game.Rulesets.Osu.Objects.Drawables.Pieces
 {
@@ -20,7 +20,7 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables.Pieces
             Anchor = Anchor.Centre;
             Origin = Anchor.Centre;
 
-            BlendingMode = BlendingMode.Additive;
+            Blending = BlendingMode.Additive;
             Alpha = 0;
 
             Children = new Drawable[]

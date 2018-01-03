@@ -2,42 +2,48 @@
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
 using System;
+using System.Diagnostics;
 using osu.Framework.Allocation;
+using osu.Framework.Development;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Shapes;
+using osu.Framework.Graphics.Sprites;
+using osu.Framework.Graphics.Textures;
+using osu.Framework.Logging;
+using osu.Game;
+using osu.Game.Configuration;
+using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Overlays;
 using osu.Game.Overlays.Notifications;
-using Squirrel;
-using osu.Framework.Graphics.Sprites;
-using osu.Framework.Graphics.Textures;
-using osu.Game.Graphics;
 using OpenTK;
 using OpenTK.Graphics;
-using System.Net.Http;
-using osu.Framework.Logging;
-using osu.Game;
+using Squirrel;
 
 namespace osu.Desktop.Overlays
 {
     public class VersionManager : OverlayContainer
     {
         private UpdateManager updateManager;
-        private NotificationManager notificationManager;
-
-        protected override bool HideOnEscape => false;
+        private NotificationOverlay notificationOverlay;
+        private OsuConfigManager config;
+        private OsuGameBase game;
 
         public override bool HandleInput => false;
 
         [BackgroundDependencyLoader]
-        private void load(NotificationManager notification, OsuColour colours, TextureStore textures, OsuGameBase game)
+        private void load(NotificationOverlay notification, OsuColour colours, TextureStore textures, OsuGameBase game, OsuConfigManager config)
         {
-            notificationManager = notification;
+            notificationOverlay = notification;
+            this.config = config;
+            this.game = game;
 
             AutoSizeAxes = Axes.Both;
             Anchor = Anchor.BottomCentre;
             Origin = Anchor.BottomCentre;
+
             Alpha = 0;
 
             Children = new Drawable[]
@@ -64,7 +70,7 @@ namespace osu.Desktop.Overlays
                                 },
                                 new OsuSpriteText
                                 {
-                                    Colour = game.IsDebug ? colours.Red : Color4.White,
+                                    Colour = DebugUtils.IsDebug ? colours.Red : Color4.White,
                                     Text = game.Version
                                 },
                             }
@@ -95,7 +101,37 @@ namespace osu.Desktop.Overlays
         protected override void LoadComplete()
         {
             base.LoadComplete();
-            State = Visibility.Visible;
+
+            var version = game.Version;
+            var lastVersion = config.Get<string>(OsuSetting.Version);
+            if (game.IsDeployedBuild && version != lastVersion)
+            {
+                config.Set(OsuSetting.Version, version);
+
+                // only show a notification if we've previously saved a version to the config file (ie. not the first run).
+                if (!string.IsNullOrEmpty(lastVersion))
+                    notificationOverlay.Post(new UpdateCompleteNotification(version));
+            }
+        }
+
+        private class UpdateCompleteNotification : SimpleNotification
+        {
+            public UpdateCompleteNotification(string version)
+            {
+                Text = $"You are now running osu!lazer {version}.\nClick to see what's new!";
+                Icon = FontAwesome.fa_check_square;
+                Activated = delegate
+                {
+                    Process.Start($"https://github.com/ppy/osu/releases/tag/v{version}");
+                    return true;
+                };
+            }
+
+            [BackgroundDependencyLoader]
+            private void load(OsuColour colours)
+            {
+                IconBackgound.Colour = colours.BlueDark;
+            }
         }
 
         protected override void Dispose(bool isDisposing)
@@ -121,7 +157,7 @@ namespace osu.Desktop.Overlays
                 if (notification == null)
                 {
                     notification = new UpdateProgressNotification { State = ProgressNotificationState.Active };
-                    Schedule(() => notificationManager.Post(notification));
+                    Schedule(() => notificationOverlay.Post(notification));
                 }
 
                 Schedule(() =>
@@ -161,10 +197,9 @@ namespace osu.Desktop.Overlays
                     }
                 }
             }
-            catch (HttpRequestException)
+            catch (Exception)
             {
-                //likely have no internet connection.
-                //we'll ignore this and retry later.
+                // we'll ignore this and retry later. can be triggered by no internet connection or thread abortion.
             }
             finally
             {
@@ -180,7 +215,7 @@ namespace osu.Desktop.Overlays
 
         protected override void PopIn()
         {
-            FadeIn(1000);
+            this.FadeIn(1000);
         }
 
         protected override void PopOut()
@@ -191,12 +226,13 @@ namespace osu.Desktop.Overlays
         {
             private OsuGame game;
 
-            protected override Notification CreateCompletionNotification() => new ProgressCompletionNotification()
+            protected override Notification CreateCompletionNotification() => new ProgressCompletionNotification
             {
                 Text = @"Update ready to install. Click to restart!",
                 Activated = () =>
                 {
-                    UpdateManager.RestartAppWhenExited();
+                    // Squirrel returns execution to us after the update process is started, so it's safe to use Wait() here
+                    UpdateManager.RestartAppWhenExited().Wait();
                     game.GracefullyExit();
                     return true;
                 }
@@ -207,20 +243,20 @@ namespace osu.Desktop.Overlays
             {
                 this.game = game;
 
-                IconContent.Add(new Drawable[]
+                IconContent.AddRange(new Drawable[]
                 {
                     new Box
                     {
                         RelativeSizeAxes = Axes.Both,
-                        ColourInfo = ColourInfo.GradientVertical(colours.YellowDark, colours.Yellow)
+                        Colour = ColourInfo.GradientVertical(colours.YellowDark, colours.Yellow)
                     },
-                    new TextAwesome
+                    new SpriteIcon
                     {
                         Anchor = Anchor.Centre,
                         Origin = Anchor.Centre,
                         Icon = FontAwesome.fa_upload,
                         Colour = Color4.White,
-                        TextSize = 20
+                        Size = new Vector2(20),
                     }
                 });
             }

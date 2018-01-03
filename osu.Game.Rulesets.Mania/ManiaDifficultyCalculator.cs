@@ -2,25 +2,22 @@
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
 using osu.Game.Beatmaps;
-using osu.Game.Rulesets.Beatmaps;
 using osu.Game.Rulesets.Mania.Beatmaps;
 using osu.Game.Rulesets.Mania.Objects;
 using System.Collections.Generic;
+using System;
 
 namespace osu.Game.Rulesets.Mania
 {
-    public class ManiaDifficultyCalculator : DifficultyCalculator<ManiaBaseHit>
+    public class ManiaDifficultyCalculator : DifficultyCalculator<ManiaHitObject>
     {
         public ManiaDifficultyCalculator(Beatmap beatmap)
             : base(beatmap)
         {
         }
 
-        protected override double CalculateInternal(Dictionary<string, string> categoryDifficulty)
-        {
-            return 0;
-        }
+        public override double Calculate(Dictionary<string, double> categoryDifficulty = null) => 0;
 
-        protected override BeatmapConverter<ManiaBaseHit> CreateBeatmapConverter() => new ManiaBeatmapConverter();
+        protected override BeatmapConverter<ManiaHitObject> CreateBeatmapConverter(Beatmap beatmap) => new ManiaBeatmapConverter(true, (int)Math.Max(1, Math.Round(beatmap.BeatmapInfo.BaseDifficulty.CircleSize)));
     }
 }

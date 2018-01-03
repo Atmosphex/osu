@@ -6,13 +6,15 @@ using OpenTK.Graphics;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Sprites;
+using osu.Framework.Graphics.Shapes;
 
 namespace osu.Game.Rulesets.Osu.Objects.Drawables.Connections
 {
     public class FollowPoint : Container
     {
         private const float width = 8;
+
+        public override bool RemoveWhenNotAlive => false;
 
         public FollowPoint()
         {
@@ -21,7 +23,7 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables.Connections
             Masking = true;
             AutoSizeAxes = Axes.Both;
             CornerRadius = width / 2;
-            EdgeEffect = new EdgeEffect
+            EdgeEffect = new EdgeEffectParameters
             {
                 Type = EdgeEffectType.Glow,
                 Colour = Color4.White.Opacity(0.2f),
@@ -33,7 +35,7 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables.Connections
                 new Box
                 {
                     Size = new Vector2(width),
-                    BlendingMode = BlendingMode.Additive,
+                    Blending = BlendingMode.Additive,
                     Origin = Anchor.Centre,
                     Anchor = Anchor.Centre,
                     Alpha = 0.5f,

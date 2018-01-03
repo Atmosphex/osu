@@ -4,12 +4,11 @@
 using System;
 using System.Globalization;
 using Newtonsoft.Json;
-using osu.Framework.Extensions;
 
 namespace osu.Game.Online.API
 {
     [Serializable]
-    internal class OAuthToken
+    public class OAuthToken
     {
         /// <summary>
         /// OAuth 2.0 access token.
@@ -22,12 +21,12 @@ namespace osu.Game.Online.API
         {
             get
             {
-                return AccessTokenExpiry - DateTime.Now.ToUnixTimestamp();
+                return AccessTokenExpiry - DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             }
 
             set
             {
-                AccessTokenExpiry = DateTime.Now.AddSeconds(value).ToUnixTimestamp();
+                AccessTokenExpiry = DateTimeOffset.Now.AddSeconds(value).ToUnixTimeSeconds();
             }
         }
 
@@ -41,13 +40,13 @@ namespace osu.Game.Online.API
         [JsonProperty(@"refresh_token")]
         public string RefreshToken;
 
-        public override string ToString() => $@"{AccessToken}/{AccessTokenExpiry.ToString(NumberFormatInfo.InvariantInfo)}/{RefreshToken}";
+        public override string ToString() => $@"{AccessToken}|{AccessTokenExpiry.ToString(NumberFormatInfo.InvariantInfo)}|{RefreshToken}";
 
         public static OAuthToken Parse(string value)
         {
             try
             {
-                string[] parts = value.Split('/');
+                string[] parts = value.Split('|');
                 return new OAuthToken
                 {
                     AccessToken = parts[0],
@@ -59,7 +58,6 @@ namespace osu.Game.Online.API
             {
 
             }
-
             return null;
         }
     }

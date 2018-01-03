@@ -8,8 +8,6 @@ using osu.Framework.Configuration;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Primitives;
-using osu.Framework.Graphics.Sprites;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Backgrounds;
 using osu.Game.Graphics.Sprites;
@@ -17,23 +15,25 @@ using osu.Game.Rulesets.Mods;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using osu.Game.Database;
+using osu.Framework.Graphics.Shapes;
+using osu.Game.Rulesets;
+using osu.Game.Graphics.UserInterface;
 
 namespace osu.Game.Overlays.Mods
 {
     public class ModSelectOverlay : WaveOverlayContainer
     {
-        private const int button_duration = 700;
-        private const int ranked_multiplier_duration = 700;
         private const float content_width = 0.8f;
 
-        private Color4 lowMultiplierColour, highMultiplierColour;
+        protected Color4 LowMultiplierColour, HighMultiplierColour;
 
-        private readonly OsuSpriteText rankedLabel;
-        private readonly OsuSpriteText multiplierLabel;
-        private readonly FillFlowContainer rankedMultiplerContainer;
+        protected readonly TriangleButton DeselectAllButton;
+        protected readonly OsuSpriteText MultiplierLabel;
+        private readonly FillFlowContainer footerContainer;
 
-        private readonly FillFlowContainer<ModSection> modSectionsContainer;
+        protected override bool BlockPassThroughKeyboard => false;
+
+        protected readonly FillFlowContainer<ModSection> ModSectionsContainer;
 
         public readonly Bindable<IEnumerable<Mod>> SelectedMods = new Bindable<IEnumerable<Mod>>();
 
@@ -43,21 +43,21 @@ namespace osu.Game.Overlays.Mods
         {
             var instance = newRuleset.CreateInstance();
 
-            foreach (ModSection section in modSectionsContainer.Children)
-                section.Buttons = instance.GetModsFor(section.ModType).Select(m => new ModButton(m)).ToArray();
+            foreach (ModSection section in ModSectionsContainer.Children)
+                section.Mods = instance.GetModsFor(section.ModType);
             refreshSelectedMods();
         }
 
         [BackgroundDependencyLoader(permitNulls: true)]
-        private void load(OsuColour colours, OsuGame osu, RulesetDatabase rulesets)
+        private void load(OsuColour colours, OsuGame osu, RulesetStore rulesets)
         {
-            lowMultiplierColour = colours.Red;
-            highMultiplierColour = colours.Green;
+            LowMultiplierColour = colours.Red;
+            HighMultiplierColour = colours.Green;
 
             if (osu != null)
                 Ruleset.BindTo(osu.Ruleset);
             else
-                Ruleset.Value = rulesets.AllRulesets.First();
+                Ruleset.Value = rulesets.AvailableRulesets.First();
 
             Ruleset.ValueChanged += rulesetChanged;
             Ruleset.TriggerChange();
@@ -67,14 +67,14 @@ namespace osu.Game.Overlays.Mods
         {
             base.PopOut();
 
-            rankedMultiplerContainer.MoveToX(rankedMultiplerContainer.DrawSize.X, APPEAR_DURATION, EasingTypes.InSine);
-            rankedMultiplerContainer.FadeOut(APPEAR_DURATION, EasingTypes.InSine);
+            footerContainer.MoveToX(footerContainer.DrawSize.X, DISAPPEAR_DURATION, Easing.InSine);
+            footerContainer.FadeOut(DISAPPEAR_DURATION, Easing.InSine);
 
-            foreach (ModSection section in modSectionsContainer.Children)
+            foreach (ModSection section in ModSectionsContainer.Children)
             {
-                section.ButtonsContainer.TransformSpacingTo(new Vector2(100f, 0f), APPEAR_DURATION, EasingTypes.InSine);
-                section.ButtonsContainer.MoveToX(100f, APPEAR_DURATION, EasingTypes.InSine);
-                section.ButtonsContainer.FadeOut(APPEAR_DURATION, EasingTypes.InSine);
+                section.ButtonsContainer.TransformSpacingTo(new Vector2(100f, 0f), DISAPPEAR_DURATION, Easing.InSine);
+                section.ButtonsContainer.MoveToX(100f, DISAPPEAR_DURATION, Easing.InSine);
+                section.ButtonsContainer.FadeOut(DISAPPEAR_DURATION, Easing.InSine);
             }
         }
 
@@ -82,47 +82,46 @@ namespace osu.Game.Overlays.Mods
         {
             base.PopIn();
 
-            rankedMultiplerContainer.MoveToX(0, ranked_multiplier_duration, EasingTypes.OutQuint);
-            rankedMultiplerContainer.FadeIn(ranked_multiplier_duration, EasingTypes.OutQuint);
+            footerContainer.MoveToX(0, APPEAR_DURATION, Easing.OutQuint);
+            footerContainer.FadeIn(APPEAR_DURATION, Easing.OutQuint);
 
-            foreach (ModSection section in modSectionsContainer.Children)
+            foreach (ModSection section in ModSectionsContainer.Children)
             {
-                section.ButtonsContainer.TransformSpacingTo(new Vector2(50f, 0f), button_duration, EasingTypes.OutQuint);
-                section.ButtonsContainer.MoveToX(0, button_duration, EasingTypes.OutQuint);
-                section.ButtonsContainer.FadeIn(button_duration, EasingTypes.OutQuint);
+                section.ButtonsContainer.TransformSpacingTo(new Vector2(50f, 0f), APPEAR_DURATION, Easing.OutQuint);
+                section.ButtonsContainer.MoveToX(0, APPEAR_DURATION, Easing.OutQuint);
+                section.ButtonsContainer.FadeIn(APPEAR_DURATION, Easing.OutQuint);
             }
         }
 
         public void DeselectAll()
         {
-            foreach (ModSection section in modSectionsContainer.Children)
+            foreach (ModSection section in ModSectionsContainer.Children)
                 section.DeselectAll();
+            refreshSelectedMods();
         }
 
-        public void DeselectTypes(Type[] modTypes)
+        /// <summary>
+        /// Deselect one or more mods.
+        /// </summary>
+        /// <param name="modTypes">The types of <see cref="Mod"/>s which should be deselected.</param>
+        /// <param name="immediate">Set to true to bypass animations and update selections immediately.</param>
+        public void DeselectTypes(Type[] modTypes, bool immediate = false)
         {
             if (modTypes.Length == 0) return;
-            foreach (ModSection section in modSectionsContainer.Children)
-                foreach (ModButton button in section.Buttons)
-                {
-                    Mod selected = button.SelectedMod;
-                    if (selected == null) continue;
-                    foreach (Type type in modTypes)
-                        if (type.IsInstanceOfType(selected))
-                            button.Deselect();
-                }
+            foreach (ModSection section in ModSectionsContainer.Children)
+                section.DeselectTypes(modTypes, immediate);
         }
 
         private void modButtonPressed(Mod selectedMod)
         {
             if (selectedMod != null)
-                DeselectTypes(selectedMod.IncompatibleMods);
+                DeselectTypes(selectedMod.IncompatibleMods, true);
             refreshSelectedMods();
         }
 
         private void refreshSelectedMods()
         {
-            SelectedMods.Value = modSectionsContainer.Children.SelectMany(s => s.Buttons.Select(x => x.SelectedMod).Where(x => x != null)).ToArray();
+            SelectedMods.Value = ModSectionsContainer.Children.SelectMany(s => s.SelectedMods).ToArray();
 
             double multiplier = 1.0;
             bool ranked = true;
@@ -133,20 +132,16 @@ namespace osu.Game.Overlays.Mods
                 ranked &= mod.Ranked;
             }
 
-            // 1.00x
-            // 1.05x
-            // 1.20x
-
-            multiplierLabel.Text = $"{multiplier:N2}x";
-            string rankedString = ranked ? "Ranked" : "Unranked";
-            rankedLabel.Text = $@"{rankedString}, Score Multiplier: ";
+            MultiplierLabel.Text = $"{multiplier:N2}x";
+            if (!ranked)
+                MultiplierLabel.Text += " (Unranked)";
 
             if (multiplier > 1.0)
-                multiplierLabel.FadeColour(highMultiplierColour, 200);
+                MultiplierLabel.FadeColour(HighMultiplierColour, 200);
             else if (multiplier < 1.0)
-                multiplierLabel.FadeColour(lowMultiplierColour, 200);
+                MultiplierLabel.FadeColour(LowMultiplierColour, 200);
             else
-                multiplierLabel.FadeColour(Color4.White, 200);
+                MultiplierLabel.FadeColour(Color4.White, 200);
         }
 
         public ModSelectOverlay()
@@ -240,7 +235,7 @@ namespace osu.Game.Overlays.Mods
                                         },
                                         new OsuSpriteText
                                         {
-                                            Text = @"Others are just for fun",
+                                            Text = @"Others are just for fun.",
                                             TextSize = 18,
                                             Shadow = true,
                                         },
@@ -249,7 +244,7 @@ namespace osu.Game.Overlays.Mods
                             },
                         },
                         // Body
-                        modSectionsContainer = new FillFlowContainer<ModSection>
+                        ModSectionsContainer = new FillFlowContainer<ModSection>
                         {
                             Origin = Anchor.TopCentre,
                             Anchor = Anchor.TopCentre,
@@ -297,7 +292,7 @@ namespace osu.Game.Overlays.Mods
                                     Colour = new Color4(172, 20, 116, 255),
                                     Alpha = 0.5f,
                                 },
-                                rankedMultiplerContainer = new FillFlowContainer
+                                footerContainer = new FillFlowContainer
                                 {
                                     Origin = Anchor.BottomCentre,
                                     Anchor = Anchor.BottomCentre,
@@ -307,26 +302,42 @@ namespace osu.Game.Overlays.Mods
                                     Direction = FillDirection.Horizontal,
                                     Padding = new MarginPadding
                                     {
-                                        Top = 20,
-                                        Bottom = 20,
+                                        Vertical = 15
                                     },
                                     Children = new Drawable[]
                                     {
-                                        rankedLabel = new OsuSpriteText
+                                        DeselectAllButton = new TriangleButton
                                         {
-                                            Text = @"Ranked, Score Multiplier: ",
+                                            Width = 180,
+                                            Text = "Deselect All",
+                                            Action = DeselectAll,
+                                            Margin = new MarginPadding
+                                            {
+                                                Right = 20
+                                            }
+                                        },
+                                        new OsuSpriteText
+                                        {
+                                            Text = @"Score Multiplier: ",
                                             TextSize = 30,
                                             Shadow = true,
+                                            Margin = new MarginPadding
+                                            {
+                                                Top = 5
+                                            }
                                         },
-                                        multiplierLabel = new OsuSpriteText
+                                        MultiplierLabel = new OsuSpriteText
                                         {
                                             Font = @"Exo2.0-Bold",
-                                            Text = @"1.00x",
                                             TextSize = 30,
                                             Shadow = true,
-                                        },
-                                    },
-                                },
+                                            Margin = new MarginPadding
+                                            {
+                                                Top = 5
+                                            }
+                                        }
+                                    }
+                                }
                             },
                         },
                     },

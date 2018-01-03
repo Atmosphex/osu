@@ -16,75 +16,102 @@ using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.UI;
 using System;
 using System.Linq;
+using osu.Framework.Graphics.Cursor;
+using osu.Game.Graphics.UserInterface;
 
 namespace osu.Game.Overlays.Mods
 {
-    public class ModButton : FillFlowContainer
+    /// <summary>
+    /// Represents a clickable button which can cycle through one of more mods.
+    /// </summary>
+    public class ModButton : ModButtonEmpty, IHasTooltip
     {
-        private ModIcon foregroundIcon { get; set; }
+        private ModIcon foregroundIcon;
+        private ModIcon backgroundIcon;
         private readonly SpriteText text;
         private readonly Container<ModIcon> iconsContainer;
         private SampleChannel sampleOn, sampleOff;
 
-        public Action<Mod> Action; // Passed the selected mod or null if none
+        /// <summary>
+        /// Fired when the selection changes.
+        /// </summary>
+        public Action<Mod> SelectionChanged;
 
-        private int _selectedIndex = -1;
-        private int selectedIndex
+        public string TooltipText => (SelectedMod?.Description ?? Mods.FirstOrDefault()?.Description) ?? string.Empty;
+
+        private const Easing mod_switch_easing = Easing.InOutSine;
+        private const double mod_switch_duration = 120;
+
+        // A selected index of -1 means not selected.
+        private int selectedIndex = -1;
+
+        /// <summary>
+        /// Change the selected mod index of this button.
+        /// </summary>
+        /// <param name="newIndex">The new index.</param>
+        /// <returns>Whether the selection changed.</returns>
+        private bool changeSelectedIndex(int newIndex)
         {
-            get
+            if (newIndex == selectedIndex) return false;
+
+            int direction = newIndex < selectedIndex ? -1 : 1;
+            bool beforeSelected = Selected;
+
+            Mod modBefore = SelectedMod ?? Mods[0];
+
+            if (newIndex >= Mods.Length)
+                newIndex = -1;
+            else if (newIndex < -1)
+                newIndex = Mods.Length - 1;
+
+            if (newIndex >= 0 && !Mods[newIndex].HasImplementation)
+                return false;
+
+            selectedIndex = newIndex;
+            Mod modAfter = SelectedMod ?? Mods[0];
+
+            if (beforeSelected != Selected)
             {
-                return _selectedIndex;
+                iconsContainer.RotateTo(Selected ? 5f : 0f, 300, Easing.OutElastic);
+                iconsContainer.ScaleTo(Selected ? 1.1f : 1f, 300, Easing.OutElastic);
             }
-            set
+
+            if (modBefore != modAfter)
             {
-                if (value == _selectedIndex) return;
-                _selectedIndex = value;
+                const float rotate_angle = 16;
 
-                if (value >= Mods.Length)
+                foregroundIcon.RotateTo(rotate_angle * direction, mod_switch_duration, mod_switch_easing);
+                backgroundIcon.RotateTo(-rotate_angle * direction, mod_switch_duration, mod_switch_easing);
+
+                backgroundIcon.Icon = modAfter.Icon;
+                using (BeginDelayedSequence(mod_switch_duration, true))
                 {
-                    _selectedIndex = -1;
-                }
-                else if (value <= -2)
-                {
-                    _selectedIndex = Mods.Length - 1;
-                }
+                    foregroundIcon
+                        .RotateTo(-rotate_angle * direction)
+                        .RotateTo(0f, mod_switch_duration, mod_switch_easing);
 
-                iconsContainer.RotateTo(Selected ? 5f : 0f, 300, EasingTypes.OutElastic);
-                iconsContainer.ScaleTo(Selected ? 1.1f : 1f, 300, EasingTypes.OutElastic);
-                foregroundIcon.Colour = Selected ? SelectedColour : ButtonColour;
+                    backgroundIcon
+                        .RotateTo(rotate_angle * direction)
+                        .RotateTo(0f, mod_switch_duration, mod_switch_easing);
 
-                if (mod != null)
-                    displayMod(SelectedMod ?? Mods[0]);
+                    Schedule(() => displayMod(modAfter));
+                }
             }
+
+            foregroundIcon.Highlighted = Selected;
+
+            (selectedIndex == -1 ? sampleOff : sampleOn).Play();
+            SelectionChanged?.Invoke(SelectedMod);
+            return true;
         }
 
         public bool Selected => selectedIndex != -1;
 
-        private Color4 buttonColour;
-        public Color4 ButtonColour
-        {
-            get
-            {
-                return buttonColour;
-            }
-            set
-            {
-                if (value == buttonColour) return;
-                buttonColour = value;
-                foreach (ModIcon icon in iconsContainer.Children)
-                {
-                    icon.Colour = value;
-                }
-            }
-        }
-
         private Color4 selectedColour;
+
         public Color4 SelectedColour
         {
-            get
-            {
-                return selectedColour;
-            }
+            get { return selectedColour; }
             set
             {
                 if (value == selectedColour) return;
@@ -94,19 +121,17 @@ namespace osu.Game.Overlays.Mods
         }
 
         private Mod mod;
+
         public Mod Mod
         {
-            get
-            {
-                return mod;
-            }
+            get { return mod; }
             set
             {
                 mod = value;
 
                 if (mod == null)
                 {
-                    Mods = new Mod[0];
+                    Mods = Array.Empty<Mod>();
                     Alpha = 0;
                 }
                 else
@@ -125,15 +150,13 @@ namespace osu.Game.Overlays.Mods
 
         public Mod[] Mods { get; private set; }
 
-        // the mods from Mod, only multiple if Mod is a MultiMod
-
-        public Mod SelectedMod => Mods.ElementAtOrDefault(selectedIndex);
+        public virtual Mod SelectedMod => Mods.ElementAtOrDefault(selectedIndex);
 
         [BackgroundDependencyLoader]
         private void load(AudioManager audio)
         {
-            sampleOn = audio.Sample.Get(@"Checkbox/check-on");
-            sampleOff = audio.Sample.Get(@"Checkbox/check-off");
+            sampleOn = audio.Sample.Get(@"UI/check-on");
+            sampleOff = audio.Sample.Get(@"UI/check-off");
         }
 
         protected override bool OnMouseDown(InputState state, MouseDownEventArgs args)
@@ -141,36 +164,50 @@ namespace osu.Game.Overlays.Mods
             switch (args.Button)
             {
                 case MouseButton.Left:
-                    SelectNext();
+                    SelectNext(1);
                     break;
                 case MouseButton.Right:
-                    SelectPrevious();
+                    SelectNext(-1);
                     break;
             }
+
             return true;
         }
 
-        public void SelectNext()
+        /// <summary>
+        /// Select the next available mod in a specified direction.
+        /// </summary>
+        /// <param name="direction">1 for forwards, -1 for backwards.</param>
+        public void SelectNext(int direction)
         {
-            (++selectedIndex == -1 ? sampleOff : sampleOn).Play();
-            Action?.Invoke(SelectedMod);
+            int start = selectedIndex + direction;
+            // wrap around if we are at an extremity.
+            if (start >= Mods.Length)
+                start = -1;
+            else if (start < -1)
+                start = Mods.Length - 1;
+
+            for (int i = start; i < Mods.Length && i >= 0; i += direction)
+            {
+                if (Mods[i].HasImplementation)
+                {
+                    changeSelectedIndex(i);
+                    return;
+                }
+            }
+
+            Deselect();
         }
 
-        public void SelectPrevious()
-        {
-            (--selectedIndex == -1 ? sampleOff : sampleOn).Play();
-            Action?.Invoke(SelectedMod);
-        }
-
-        public void Deselect()
-        {
-            selectedIndex = -1;
-        }
+        public void Deselect() => changeSelectedIndex(-1);
 
         private void displayMod(Mod mod)
         {
+            if (backgroundIcon != null)
+                backgroundIcon.Icon = foregroundIcon.Icon;
             foregroundIcon.Icon = mod.Icon;
             text.Text = mod.Name;
+            Colour = mod.HasImplementation ? Color4.White : Color4.Gray;
         }
 
         private void createIcons()
@@ -178,52 +215,34 @@ namespace osu.Game.Overlays.Mods
             iconsContainer.Clear();
             if (Mods.Length > 1)
             {
-                iconsContainer.Add(new[]
+                iconsContainer.AddRange(new[]
                 {
-                    new ModIcon
+                    backgroundIcon = new PassThroughTooltipModIcon(Mods[1])
                     {
-                        Origin = Anchor.Centre,
-                        Anchor = Anchor.Centre,
-                        AutoSizeAxes = Axes.Both,
+                        Origin = Anchor.BottomRight,
+                        Anchor = Anchor.BottomRight,
                         Position = new Vector2(1.5f),
-                        Colour = ButtonColour
                     },
-                    foregroundIcon = new ModIcon
+                    foregroundIcon = new PassThroughTooltipModIcon(Mods[0])
                     {
-                        Origin = Anchor.Centre,
-                        Anchor = Anchor.Centre,
-                        AutoSizeAxes = Axes.Both,
+                        Origin = Anchor.BottomRight,
+                        Anchor = Anchor.BottomRight,
                         Position = new Vector2(-1.5f),
-                        Colour = ButtonColour
                     },
                 });
             }
             else
             {
-                iconsContainer.Add(foregroundIcon = new ModIcon
+                iconsContainer.Add(foregroundIcon = new PassThroughTooltipModIcon(Mod)
                 {
                     Origin = Anchor.Centre,
                     Anchor = Anchor.Centre,
-                    AutoSizeAxes = Axes.Both,
-                    Colour = ButtonColour
                 });
             }
         }
 
-        protected override void LoadComplete()
+        public ModButton(Mod mod)
         {
-            base.LoadComplete();
-            foreach (ModIcon icon in iconsContainer.Children)
-                icon.Colour = ButtonColour;
-        }
-
-        public ModButton(Mod m)
-        {
-            Direction = FillDirection.Vertical;
-            Spacing = new Vector2(0f, -5f);
-            Size = new Vector2(100f);
-            AlwaysPresent = true;
-
             Children = new Drawable[]
             {
                 new Container
@@ -243,13 +262,25 @@ namespace osu.Game.Overlays.Mods
                 },
                 text = new OsuSpriteText
                 {
+                    Y = 75,
                     Origin = Anchor.TopCentre,
                     Anchor = Anchor.TopCentre,
                     TextSize = 18,
                 },
+                new HoverClickSounds()
             };
 
-            Mod = m;
+            Mod = mod;
+        }
+
+        private class PassThroughTooltipModIcon : ModIcon
+        {
+            public override string TooltipText => null;
+
+            public PassThroughTooltipModIcon(Mod mod)
+                : base(mod)
+            {
+            }
         }
     }
 }

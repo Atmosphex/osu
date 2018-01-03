@@ -11,12 +11,10 @@ using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Primitives;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
 using osu.Framework.Localisation;
 using osu.Game.Beatmaps;
-using osu.Game.Database;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
@@ -24,10 +22,12 @@ using osu.Game.Rulesets.Scoring;
 using osu.Game.Screens.Play;
 using osu.Game.Screens.Select.Leaderboards;
 using osu.Game.Users;
+using osu.Framework.Graphics.Shapes;
+using osu.Framework.Extensions;
 
 namespace osu.Game.Screens.Ranking
 {
-    internal class ResultsPageScore : ResultsPage
+    public class ResultsPageScore : ResultsPage
     {
         private ScoreCounter scoreCounter;
 
@@ -117,7 +117,7 @@ namespace osu.Game.Screens.Ranking
                             Origin = Anchor.TopCentre,
                             Margin = new MarginPadding { Bottom = 10 },
                         },
-                        new DateDisplay(Score.Date)
+                        new DateTimeDisplay(Score.Date.LocalDateTime)
                         {
                             Anchor = Anchor.TopCentre,
                             Origin = Anchor.TopCentre,
@@ -133,7 +133,7 @@ namespace osu.Game.Screens.Ranking
                             {
                                 new Box
                                 {
-                                    ColourInfo = ColourInfo.GradientHorizontal(
+                                    Colour = ColourInfo.GradientHorizontal(
                                         colours.GrayC.Opacity(0),
                                         colours.GrayC.Opacity(0.9f)),
                                     RelativeSizeAxes = Axes.Both,
@@ -143,7 +143,7 @@ namespace osu.Game.Screens.Ranking
                                 {
                                     Anchor = Anchor.TopRight,
                                     Origin = Anchor.TopRight,
-                                    ColourInfo = ColourInfo.GradientHorizontal(
+                                    Colour = ColourInfo.GradientHorizontal(
                                         colours.GrayC.Opacity(0.9f),
                                         colours.GrayC.Opacity(0)),
                                     RelativeSizeAxes = Axes.Both,
@@ -158,13 +158,13 @@ namespace osu.Game.Screens.Ranking
                             Origin = Anchor.TopCentre,
                             Direction = FillDirection.Horizontal,
                             LayoutDuration = 200,
-                            LayoutEasing = EasingTypes.OutQuint
+                            LayoutEasing = Easing.OutQuint
                         }
                     }
                 }
             };
 
-            statisticsContainer.Children = Score.Statistics.Select(s => new DrawableScoreStatistic(s));
+            statisticsContainer.ChildrenEnumerable = Score.Statistics.OrderByDescending(p => p.Key).Select(s => new DrawableScoreStatistic(s));
         }
 
         protected override void LoadComplete()
@@ -178,18 +178,18 @@ namespace osu.Game.Screens.Ranking
                 int delay = 0;
                 foreach (var s in statisticsContainer.Children)
                 {
-                    s.FadeOut();
-                    s.Delay(delay += 200);
-                    s.FadeIn(300 + delay, EasingTypes.Out);
+                    s.FadeOut()
+                     .Then(delay += 200)
+                     .FadeIn(300 + delay, Easing.Out);
                 }
             });
         }
 
         private class DrawableScoreStatistic : Container
         {
-            private readonly KeyValuePair<string, dynamic> statistic;
+            private readonly KeyValuePair<HitResult, object> statistic;
 
-            public DrawableScoreStatistic(KeyValuePair<string, dynamic> statistic)
+            public DrawableScoreStatistic(KeyValuePair<HitResult, object> statistic)
             {
                 this.statistic = statistic;
 
@@ -202,15 +202,15 @@ namespace osu.Game.Screens.Ranking
             {
                 Children = new Drawable[]
                 {
-                    new SpriteText {
+                    new OsuSpriteText {
                         Text = statistic.Value.ToString().PadLeft(4, '0'),
                         Colour = colours.Gray7,
                         TextSize = 30,
                         Anchor = Anchor.TopCentre,
                         Origin = Anchor.TopCentre,
                     },
-                    new SpriteText {
-                        Text = statistic.Key,
+                    new OsuSpriteText {
+                        Text = statistic.Key.GetDescription(),
                         Colour = colours.Gray7,
                         Font = @"Exo2.0-Bold",
                         Y = 26,
@@ -221,13 +221,13 @@ namespace osu.Game.Screens.Ranking
             }
         }
 
-        private class DateDisplay : Container
+        private class DateTimeDisplay : Container
         {
-            private DateTime date;
+            private DateTime datetime;
 
-            public DateDisplay(DateTime date)
+            public DateTimeDisplay(DateTime datetime)
             {
-                this.date = date;
+                this.datetime = datetime;
 
                 AutoSizeAxes = Axes.Y;
 
@@ -251,16 +251,16 @@ namespace osu.Game.Screens.Ranking
                     {
                         Origin = Anchor.CentreLeft,
                         Anchor = Anchor.CentreLeft,
-                        Text = date.ToString("HH:mm"),
-                        Padding = new MarginPadding { Left = 10, Right = 10, Top = 5, Bottom = 5 },
+                        Text = datetime.ToShortDateString(),
+                        Padding = new MarginPadding { Horizontal = 10, Vertical = 5 },
                         Colour = Color4.White,
                     },
                     new OsuSpriteText
                     {
                         Origin = Anchor.CentreRight,
                         Anchor = Anchor.CentreRight,
-                        Text = date.ToString("yyyy/MM/dd"),
-                        Padding = new MarginPadding { Left = 10, Right = 10, Top = 5, Bottom = 5 },
+                        Text = datetime.ToShortTimeString(),
+                        Padding = new MarginPadding { Horizontal = 10, Vertical = 5 },
                         Colour = Color4.White,
                     }
                 };
@@ -325,7 +325,14 @@ namespace osu.Game.Screens.Ranking
                 title.Colour = artist.Colour = colours.BlueDarker;
                 versionMapper.Colour = colours.Gray8;
 
-                versionMapper.Text = $"{beatmap.Version} - mapped by {beatmap.Metadata.Author}";
+                var creator = beatmap.Metadata.Author?.Username;
+                if (!string.IsNullOrEmpty(creator)) {
+                    versionMapper.Text = $"mapped by {creator}";
+
+                    if (!string.IsNullOrEmpty(beatmap.Version))
+                        versionMapper.Text = $"{beatmap.Version} - " + versionMapper.Text;
+                }
+
                 title.Current = localisation.GetUnicodePreference(beatmap.Metadata.TitleUnicode, beatmap.Metadata.Title);
                 artist.Current = localisation.GetUnicodePreference(beatmap.Metadata.ArtistUnicode, beatmap.Metadata.Artist);
             }
@@ -343,6 +350,7 @@ namespace osu.Game.Screens.Ranking
                 {
                     cover = new Sprite
                     {
+                        RelativeSizeAxes = Axes.Both,
                         FillMode = FillMode.Fill,
                         Anchor = Anchor.Centre,
                         Origin = Anchor.Centre,
@@ -371,7 +379,7 @@ namespace osu.Game.Screens.Ranking
         {
             protected override double RollingDuration => 3000;
 
-            protected override EasingTypes RollingEasing => EasingTypes.OutPow10;
+            protected override Easing RollingEasing => Easing.OutPow10;
 
             public SlowScoreCounter(uint leading = 0) : base(leading)
             {

@@ -6,16 +6,15 @@ using osu.Framework.Allocation;
 using osu.Framework.Caching;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Primitives;
-using osu.Framework.Graphics.Sprites;
-using osu.Game.Database;
 using OpenTK;
 using OpenTK.Graphics;
 using osu.Framework.Configuration;
+using osu.Framework.Graphics.Shapes;
+using osu.Game.Rulesets;
 
 namespace osu.Game.Overlays.Toolbar
 {
-    internal class ToolbarModeSelector : Container
+    public class ToolbarModeSelector : Container
     {
         private const float padding = 10;
 
@@ -47,14 +46,14 @@ namespace osu.Game.Overlays.Toolbar
                     Anchor = Anchor.BottomLeft,
                     Origin = Anchor.TopLeft,
                     Masking = true,
-                    EdgeEffect = new EdgeEffect
+                    EdgeEffect = new EdgeEffectParameters
                     {
                         Type = EdgeEffectType.Glow,
                         Colour = new Color4(255, 194, 224, 100),
                         Radius = 15,
                         Roundness = 15,
                     },
-                    Children = new []
+                    Children = new[]
                     {
                         new Box
                         {
@@ -65,10 +64,10 @@ namespace osu.Game.Overlays.Toolbar
             };
         }
 
-        [BackgroundDependencyLoader]
-        private void load(RulesetDatabase rulesets, OsuGame game)
+        [BackgroundDependencyLoader(true)]
+        private void load(RulesetStore rulesets, OsuGame game)
         {
-            foreach (var r in rulesets.AllRulesets)
+            foreach (var r in rulesets.AvailableRulesets)
             {
                 modeButtons.Add(new ToolbarModeButton
                 {
@@ -82,12 +81,15 @@ namespace osu.Game.Overlays.Toolbar
 
             ruleset.ValueChanged += rulesetChanged;
             ruleset.DisabledChanged += disabledChanged;
-            ruleset.BindTo(game.Ruleset);
+            if (game != null)
+                ruleset.BindTo(game.Ruleset);
+            else
+                ruleset.Value = rulesets.AvailableRulesets.FirstOrDefault();
         }
 
         public override bool HandleInput => !ruleset.Disabled;
 
-        private void disabledChanged(bool isDisabled) => FadeColour(isDisabled ? Color4.Gray : Color4.White, 300);
+        private void disabledChanged(bool isDisabled) => this.FadeColour(isDisabled ? Color4.Gray : Color4.White, 300);
 
         protected override void Update()
         {
@@ -114,8 +116,11 @@ namespace osu.Game.Overlays.Toolbar
         {
             base.UpdateAfterChildren();
 
-            if (!activeMode.EnsureValid())
-                activeMode.Refresh(() => modeButtonLine.MoveToX(activeButton.DrawPosition.X, 200, EasingTypes.OutQuint));
+            if (!activeMode.IsValid)
+            {
+                modeButtonLine.MoveToX(activeButton.DrawPosition.X, 200, Easing.OutQuint);
+                activeMode.Validate();
+            }
         }
     }
 }

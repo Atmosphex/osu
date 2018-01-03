@@ -2,67 +2,73 @@
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
 using OpenTK;
 using OpenTK.Graphics;
 using osu.Framework.Allocation;
-using osu.Framework.Audio.Track;
 using osu.Framework.Configuration;
-using osu.Framework.Extensions;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Primitives;
+using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
 using osu.Framework.Input;
 using osu.Framework.Localisation;
-using osu.Framework.MathUtils;
+using osu.Framework.Threading;
 using osu.Game.Beatmaps;
-using osu.Game.Database;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
+using osu.Game.Overlays.Music;
+using osu.Game.Graphics.UserInterface;
+using osu.Game.Graphics.Containers;
 
 namespace osu.Game.Overlays
 {
-    public class MusicController : FocusedOverlayContainer
+    public class MusicController : OsuFocusedOverlayContainer
     {
-        private Drawable currentBackground;
-        private DragBar progress;
-        private Button playButton;
-        private SpriteText title, artist;
+        private const float player_height = 130;
 
-        private List<BeatmapSetInfo> playList;
-        private readonly List<BeatmapInfo> playHistory = new List<BeatmapInfo>();
-        private int playListIndex;
-        private int playHistoryIndex = -1;
-
-        private TrackManager trackManager;
-        private Bindable<WorkingBeatmap> beatmapSource;
-        private WorkingBeatmap current;
-        private BeatmapDatabase beatmaps;
-        private LocalisationEngine localisation;
-
-        private Container dragContainer;
+        private const float transition_length = 800;
 
         private const float progress_height = 10;
 
         private const float bottom_black_area_height = 55;
 
+        private Drawable background;
+        private ProgressBar progressBar;
+
+        private IconButton prevButton;
+        private IconButton playButton;
+        private IconButton nextButton;
+        private IconButton playlistButton;
+
+        private SpriteText title, artist;
+
+        private PlaylistOverlay playlist;
+
+        private LocalisationEngine localisation;
+
+        private readonly Bindable<WorkingBeatmap> beatmapBacking = new Bindable<WorkingBeatmap>();
+
+        private Container dragContainer;
+        private Container playerContainer;
+
         public MusicController()
         {
             Width = 400;
-            Height = 130;
-
             Margin = new MarginPadding(10);
-        }
 
-        protected override bool OnDragStart(InputState state) => true;
+            // required to let MusicController handle beatmap cycling.
+            AlwaysPresent = true;
+        }
 
         protected override bool OnDrag(InputState state)
         {
+            if (base.OnDrag(state)) return true;
+
             Trace.Assert(state.Mouse.PositionMouseDown != null, "state.Mouse.PositionMouseDown != null");
 
             Vector2 change = state.Mouse.Position - state.Mouse.PositionMouseDown.Value;
@@ -71,240 +77,264 @@ namespace osu.Game.Overlays
             change *= change.Length <= 0 ? 0 : (float)Math.Pow(change.Length, 0.7f) / change.Length;
 
             dragContainer.MoveTo(change);
-            return base.OnDrag(state);
+            return true;
         }
 
         protected override bool OnDragEnd(InputState state)
         {
-            dragContainer.MoveTo(Vector2.Zero, 800, EasingTypes.OutElastic);
+            dragContainer.MoveTo(Vector2.Zero, 800, Easing.OutElastic);
             return base.OnDragEnd(state);
         }
 
         [BackgroundDependencyLoader]
-        private void load(OsuGameBase game, BeatmapDatabase beatmaps, OsuColour colours, LocalisationEngine localisation)
+        private void load(OsuGameBase game, OsuColour colours, LocalisationEngine localisation)
         {
+            this.localisation = localisation;
+
             Children = new Drawable[]
             {
                 dragContainer = new Container
                 {
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
-                    Masking = true,
-                    CornerRadius = 5,
-                    EdgeEffect = new EdgeEffect
-                    {
-                        Type = EdgeEffectType.Shadow,
-                        Colour = Color4.Black.Opacity(40),
-                        Radius = 5,
-                    },
-                    RelativeSizeAxes = Axes.Both,
+                    RelativeSizeAxes = Axes.X,
+                    AutoSizeAxes = Axes.Y,
                     Children = new Drawable[]
                     {
-                        title = new OsuSpriteText
+                        playlist = new PlaylistOverlay
                         {
-                            Origin = Anchor.BottomCentre,
-                            Anchor = Anchor.TopCentre,
-                            Position = new Vector2(0, 40),
-                            TextSize = 25,
-                            Colour = Color4.White,
-                            Text = @"Nothing to play",
-                            Font = @"Exo2.0-MediumItalic"
-                        },
-                        artist = new OsuSpriteText
-                        {
-                            Origin = Anchor.TopCentre,
-                            Anchor = Anchor.TopCentre,
-                            Position = new Vector2(0, 45),
-                            TextSize = 15,
-                            Colour = Color4.White,
-                            Text = @"Nothing to play",
-                            Font = @"Exo2.0-BoldItalic"
-                        },
-                        new Container
-                        {
-                            Padding = new MarginPadding { Bottom = progress_height },
-                            Height = bottom_black_area_height,
                             RelativeSizeAxes = Axes.X,
-                            Origin = Anchor.BottomCentre,
-                            Anchor = Anchor.BottomCentre,
-                            Children = new Drawable[]
+                            Y = player_height + 10,
+                        },
+                        playerContainer = new Container
+                        {
+                            RelativeSizeAxes = Axes.X,
+                            Height = player_height,
+                            Masking = true,
+                            CornerRadius = 5,
+                            EdgeEffect = new EdgeEffectParameters
                             {
-                                new FillFlowContainer<Button>
+                                Type = EdgeEffectType.Shadow,
+                                Colour = Color4.Black.Opacity(40),
+                                Radius = 5,
+                            },
+                            Children = new[]
+                            {
+                                background = new Background(),
+                                title = new OsuSpriteText
                                 {
-                                    AutoSizeAxes = Axes.Both,
-                                    Direction = FillDirection.Horizontal,
-                                    Spacing = new Vector2(5),
-                                    Origin = Anchor.Centre,
-                                    Anchor = Anchor.Centre,
-                                    Children = new[]
+                                    Origin = Anchor.BottomCentre,
+                                    Anchor = Anchor.TopCentre,
+                                    Position = new Vector2(0, 40),
+                                    TextSize = 25,
+                                    Colour = Color4.White,
+                                    Text = @"Nothing to play",
+                                    Font = @"Exo2.0-MediumItalic"
+                                },
+                                artist = new OsuSpriteText
+                                {
+                                    Origin = Anchor.TopCentre,
+                                    Anchor = Anchor.TopCentre,
+                                    Position = new Vector2(0, 45),
+                                    TextSize = 15,
+                                    Colour = Color4.White,
+                                    Text = @"Nothing to play",
+                                    Font = @"Exo2.0-BoldItalic"
+                                },
+                                new Container
+                                {
+                                    Padding = new MarginPadding { Bottom = progress_height },
+                                    Height = bottom_black_area_height,
+                                    RelativeSizeAxes = Axes.X,
+                                    Origin = Anchor.BottomCentre,
+                                    Anchor = Anchor.BottomCentre,
+                                    Children = new Drawable[]
                                     {
-                                        new Button
+                                        new FillFlowContainer<IconButton>
                                         {
-                                            Action = prev,
-                                            Icon = FontAwesome.fa_step_backward,
-                                        },
-                                        playButton = new Button
-                                        {
-                                            Scale = new Vector2(1.4f),
-                                            IconScale = new Vector2(1.4f),
-                                            Action = () =>
+                                            AutoSizeAxes = Axes.Both,
+                                            Direction = FillDirection.Horizontal,
+                                            Spacing = new Vector2(5),
+                                            Origin = Anchor.Centre,
+                                            Anchor = Anchor.Centre,
+                                            Children = new[]
                                             {
-                                                if (current?.Track == null) return;
-                                                if (current.Track.IsRunning)
-                                                    current.Track.Stop();
-                                                else
-                                                    current.Track.Start();
-                                            },
-                                            Icon = FontAwesome.fa_play_circle_o,
+                                                prevButton = new IconButton
+                                                {
+                                                    Anchor = Anchor.Centre,
+                                                    Origin = Anchor.Centre,
+                                                    Action = prev,
+                                                    Icon = FontAwesome.fa_step_backward,
+                                                },
+                                                playButton = new IconButton
+                                                {
+                                                    Anchor = Anchor.Centre,
+                                                    Origin = Anchor.Centre,
+                                                    Scale = new Vector2(1.4f),
+                                                    IconScale = new Vector2(1.4f),
+                                                    Action = play,
+                                                    Icon = FontAwesome.fa_play_circle_o,
+                                                },
+                                                nextButton = new IconButton
+                                                {
+                                                    Anchor = Anchor.Centre,
+                                                    Origin = Anchor.Centre,
+                                                    Action = next,
+                                                    Icon = FontAwesome.fa_step_forward,
+                                                },
+                                            }
                                         },
-                                        new Button
+                                        playlistButton = new IconButton
                                         {
-                                            Action = next,
-                                            Icon = FontAwesome.fa_step_forward,
+                                            Origin = Anchor.Centre,
+                                            Anchor = Anchor.CentreRight,
+                                            Position = new Vector2(-bottom_black_area_height / 2, 0),
+                                            Icon = FontAwesome.fa_bars,
+                                            Action = () => playlist.ToggleVisibility(),
                                         },
                                     }
                                 },
-                                new Button
+                                progressBar = new ProgressBar
                                 {
-                                    Origin = Anchor.Centre,
-                                    Anchor = Anchor.CentreRight,
-                                    Position = new Vector2(-bottom_black_area_height / 2, 0),
-                                    Icon = FontAwesome.fa_bars,
-                                },
-                            }
+                                    Origin = Anchor.BottomCentre,
+                                    Anchor = Anchor.BottomCentre,
+                                    Height = progress_height,
+                                    FillColour = colours.Yellow,
+                                    OnSeek = progress => current?.Track.Seek(progress)
+                                }
+                            },
                         },
-                        progress = new DragBar
-                        {
-                            Origin = Anchor.BottomCentre,
-                            Anchor = Anchor.BottomCentre,
-                            Height = progress_height,
-                            Colour = colours.Yellow,
-                            SeekRequested = seek
-                        }
                     }
                 }
             };
 
-            this.beatmaps = beatmaps;
-            trackManager = game.Audio.Track;
-            this.localisation = localisation;
+            beatmapBacking.BindTo(game.Beatmap);
 
-            beatmapSource = game.Beatmap ?? new Bindable<WorkingBeatmap>();
-            playList = beatmaps.GetAllWithChildren<BeatmapSetInfo>();
-
-            currentBackground = new MusicControllerBackground();
-            dragContainer.Add(currentBackground);
+            playlist.StateChanged += s => playlistButton.FadeColour(s == Visibility.Visible ? colours.Yellow : Color4.White, 200, Easing.OutQuint);
         }
 
         protected override void LoadComplete()
         {
-            beatmapSource.ValueChanged += workingChanged;
-            beatmapSource.TriggerChange();
+            beatmapBacking.ValueChanged += beatmapChanged;
+            beatmapBacking.DisabledChanged += beatmapDisabledChanged;
+            beatmapBacking.TriggerChange();
 
             base.LoadComplete();
+        }
+
+        private void beatmapDisabledChanged(bool disabled)
+        {
+            if (disabled)
+                playlist.Hide();
+
+            prevButton.Enabled.Value = !disabled;
+            nextButton.Enabled.Value = !disabled;
+            playlistButton.Enabled.Value = !disabled;
+        }
+
+        protected override void UpdateAfterChildren()
+        {
+            base.UpdateAfterChildren();
+            Height = dragContainer.Height;
         }
 
         protected override void Update()
         {
             base.Update();
 
-            if (pendingBeatmapSwitch != null)
-            {
-                pendingBeatmapSwitch();
-                pendingBeatmapSwitch = null;
-            }
-
             if (current?.TrackLoaded ?? false)
             {
-                progress.UpdatePosition(current.Track.Length == 0 ? 0 : (float)(current.Track.CurrentTime / current.Track.Length));
-                playButton.Icon = current.Track.IsRunning ? FontAwesome.fa_pause_circle_o : FontAwesome.fa_play_circle_o;
+                var track = current.Track;
 
-                if (current.Track.HasCompleted && !current.Track.Looping) next();
+                progressBar.EndTime = track.Length;
+                progressBar.CurrentTime = track.CurrentTime;
+
+                playButton.Icon = track.IsRunning ? FontAwesome.fa_pause_circle_o : FontAwesome.fa_play_circle_o;
+
+                if (track.HasCompleted && !track.Looping && !beatmapBacking.Disabled && playlist.BeatmapSets.Any())
+                    next();
             }
             else
                 playButton.Icon = FontAwesome.fa_play_circle_o;
         }
 
-        private void workingChanged(WorkingBeatmap beatmap)
+        private void play()
         {
-            progress.IsEnabled = beatmap != null;
-            if (beatmap == current) return;
-            bool audioEquals = current?.BeatmapInfo?.AudioEquals(beatmap?.BeatmapInfo) ?? false;
-            current = beatmap;
-            updateDisplay(current, audioEquals ? TransformDirection.None : TransformDirection.Next);
-            appendToHistory(current?.BeatmapInfo);
-        }
+            var track = current?.Track;
 
-        private void appendToHistory(BeatmapInfo beatmap)
-        {
-            if (beatmap == null) return;
-
-            if (playHistoryIndex >= 0)
+            if (track == null)
             {
-                if (beatmap.AudioEquals(playHistory[playHistoryIndex]))
-                    return;
-                if (playHistoryIndex < playHistory.Count - 1)
-                    playHistory.RemoveRange(playHistoryIndex + 1, playHistory.Count - playHistoryIndex - 1);
+                if (!beatmapBacking.Disabled)
+                    playlist.PlayNext();
+                return;
             }
-            playHistory.Insert(++playHistoryIndex, beatmap);
+
+            if (track.IsRunning)
+                track.Stop();
+            else
+                track.Start();
         }
 
         private void prev()
         {
-            if (playHistoryIndex > 0)
-                play(playHistory[--playHistoryIndex], false);
+            queuedDirection = TransformDirection.Prev;
+            playlist.PlayPrevious();
         }
 
         private void next()
         {
-            if (playHistoryIndex < playHistory.Count - 1)
-                play(playHistory[++playHistoryIndex], true);
-            else
-            {
-                if (playList.Count == 0) return;
-                if (current != null && playList.Count == 1) return;
-                //shuffle
-                BeatmapInfo nextToPlay;
-                do
-                {
-                    int j = RNG.Next(playListIndex, playList.Count);
-                    if (j != playListIndex)
-                    {
-                        BeatmapSetInfo temp = playList[playListIndex];
-                        playList[playListIndex] = playList[j];
-                        playList[j] = temp;
-                    }
-
-                    nextToPlay = playList[playListIndex++].Beatmaps[0];
-                    if (playListIndex == playList.Count) playListIndex = 0;
-                }
-                while (nextToPlay.AudioEquals(current?.BeatmapInfo));
-
-                play(nextToPlay, true);
-                appendToHistory(nextToPlay);
-            }
+            queuedDirection = TransformDirection.Next;
+            playlist.PlayNext();
         }
 
-        private void play(BeatmapInfo info, bool isNext)
+        private WorkingBeatmap current;
+        private TransformDirection? queuedDirection;
+
+        private void beatmapChanged(WorkingBeatmap beatmap)
         {
-            current = beatmaps.GetWorkingBeatmap(info, current);
-            Task.Run(() =>
+            TransformDirection direction = TransformDirection.None;
+
+            if (current != null)
             {
-                trackManager.SetExclusive(current.Track);
-                current.Track.Start();
-                beatmapSource.Value = current;
-            }).ContinueWith(task => Schedule(task.ThrowIfFaulted), TaskContinuationOptions.OnlyOnFaulted);
-            updateDisplay(current, isNext ? TransformDirection.Next : TransformDirection.Prev);
+                bool audioEquals = beatmap?.BeatmapInfo?.AudioEquals(current.BeatmapInfo) ?? false;
+
+                if (audioEquals)
+                    direction = TransformDirection.None;
+                else if (queuedDirection.HasValue)
+                {
+                    direction = queuedDirection.Value;
+                    queuedDirection = null;
+                }
+                else
+                {
+                    //figure out the best direction based on order in playlist.
+                    var last = playlist.BeatmapSets.TakeWhile(b => b.ID != current.BeatmapSetInfo?.ID).Count();
+                    var next = beatmap == null ? -1 : playlist.BeatmapSets.TakeWhile(b => b.ID != beatmap.BeatmapSetInfo?.ID).Count();
+
+                    direction = last > next ? TransformDirection.Prev : TransformDirection.Next;
+                }
+            }
+
+            current = beatmap;
+
+            progressBar.CurrentTime = 0;
+
+            updateDisplay(current, direction);
+
+            queuedDirection = null;
         }
 
-        private Action pendingBeatmapSwitch;
+        private ScheduledDelegate pendingBeatmapSwitch;
 
         private void updateDisplay(WorkingBeatmap beatmap, TransformDirection direction)
         {
             //we might be off-screen when this update comes in.
             //rather than Scheduling, manually handle this to avoid possible memory contention.
-            pendingBeatmapSwitch = () =>
+            pendingBeatmapSwitch?.Cancel();
+
+            pendingBeatmapSwitch = Schedule(delegate
             {
+                // todo: this can likely be replaced with WorkingBeatmap.GetBeatmapAsync()
                 Task.Run(() =>
                 {
                     if (beatmap?.Beatmap == null) //this is not needed if a placeholder exists
@@ -317,71 +347,65 @@ namespace osu.Game.Overlays
                     }
                     else
                     {
-                        BeatmapMetadata metadata = beatmap.Beatmap.BeatmapInfo.Metadata;
+                        BeatmapMetadata metadata = beatmap.Metadata;
                         title.Current = localisation.GetUnicodePreference(metadata.TitleUnicode, metadata.Title);
                         artist.Current = localisation.GetUnicodePreference(metadata.ArtistUnicode, metadata.Artist);
                     }
                 });
 
-                dragContainer.Add(new AsyncLoadWrapper(new MusicControllerBackground(beatmap)
+                LoadComponentAsync(new Background(beatmap) { Depth = float.MaxValue }, newBackground =>
                 {
-                    OnLoadComplete = d =>
+                    switch (direction)
                     {
-                        switch (direction)
-                        {
-                            case TransformDirection.Next:
-                                d.Position = new Vector2(400, 0);
-                                d.MoveToX(0, 500, EasingTypes.OutCubic);
-                                currentBackground.MoveToX(-400, 500, EasingTypes.OutCubic);
-                                break;
-                            case TransformDirection.Prev:
-                                d.Position = new Vector2(-400, 0);
-                                d.MoveToX(0, 500, EasingTypes.OutCubic);
-                                currentBackground.MoveToX(400, 500, EasingTypes.OutCubic);
-                                break;
-                        }
-                        currentBackground.Expire();
-                        currentBackground = d;
+                        case TransformDirection.Next:
+                            newBackground.Position = new Vector2(400, 0);
+                            newBackground.MoveToX(0, 500, Easing.OutCubic);
+                            background.MoveToX(-400, 500, Easing.OutCubic);
+                            break;
+                        case TransformDirection.Prev:
+                            newBackground.Position = new Vector2(-400, 0);
+                            newBackground.MoveToX(0, 500, Easing.OutCubic);
+                            background.MoveToX(400, 500, Easing.OutCubic);
+                            break;
                     }
-                })
-                {
-                    Depth = float.MaxValue,
+
+                    background.Expire();
+                    background = newBackground;
+
+                    playerContainer.Add(newBackground);
                 });
-            };
+            });
         }
-
-        private void seek(float position)
-        {
-            current?.Track?.Seek(current.Track.Length * position);
-            current?.Track?.Start();
-        }
-
-        private const float transition_length = 800;
 
         protected override void PopIn()
         {
             base.PopIn();
 
-            FadeIn(transition_length, EasingTypes.OutQuint);
-            dragContainer.ScaleTo(1, transition_length, EasingTypes.OutElastic);
+            this.FadeIn(transition_length, Easing.OutQuint);
+            dragContainer.ScaleTo(1, transition_length, Easing.OutElastic);
         }
 
         protected override void PopOut()
         {
             base.PopOut();
 
-            FadeOut(transition_length, EasingTypes.OutQuint);
-            dragContainer.ScaleTo(0.9f, transition_length, EasingTypes.OutQuint);
+            this.FadeOut(transition_length, Easing.OutQuint);
+            dragContainer.ScaleTo(0.9f, transition_length, Easing.OutQuint);
         }
 
-        private enum TransformDirection { None, Next, Prev }
+        private enum TransformDirection
+        {
+            None,
+            Next,
+            Prev
+        }
 
-        private class MusicControllerBackground : BufferedContainer
+        private class Background : BufferedContainer
         {
             private readonly Sprite sprite;
             private readonly WorkingBeatmap beatmap;
 
-            public MusicControllerBackground(WorkingBeatmap beatmap = null)
+            public Background(WorkingBeatmap beatmap = null)
             {
                 this.beatmap = beatmap;
                 CacheDrawnFrameBuffer = true;
@@ -392,6 +416,7 @@ namespace osu.Game.Overlays
                 {
                     sprite = new Sprite
                     {
+                        RelativeSizeAxes = Axes.Both,
                         Colour = OsuColour.Gray(150),
                         FillMode = FillMode.Fill,
                     },
@@ -410,106 +435,6 @@ namespace osu.Game.Overlays
             private void load(TextureStore textures)
             {
                 sprite.Texture = beatmap?.Background ?? textures.Get(@"Backgrounds/bg4");
-            }
-        }
-
-        private class Button : ClickableContainer
-        {
-            private readonly TextAwesome icon;
-            private readonly Box hover;
-            private readonly Container content;
-
-            public FontAwesome Icon
-            {
-                get { return icon.Icon; }
-                set { icon.Icon = value; }
-            }
-
-            private const float button_size = 30;
-            private Color4 flashColour;
-
-            public Vector2 IconScale
-            {
-                get { return icon.Scale; }
-                set { icon.Scale = value; }
-            }
-
-            public Button()
-            {
-                AutoSizeAxes = Axes.Both;
-
-                Origin = Anchor.Centre;
-                Anchor = Anchor.Centre;
-
-                Children = new Drawable[]
-                {
-                    content = new Container
-                    {
-                        Size = new Vector2(button_size),
-                        CornerRadius = 5,
-                        Masking = true,
-
-                        Origin = Anchor.Centre,
-                        Anchor = Anchor.Centre,
-                        EdgeEffect = new EdgeEffect
-                        {
-                            Colour = Color4.Black.Opacity(0.04f),
-                            Type = EdgeEffectType.Shadow,
-                            Radius = 5,
-                        },
-                        Children = new Drawable[]
-                        {
-                            hover = new Box
-                            {
-                                RelativeSizeAxes = Axes.Both,
-                                Alpha = 0,
-                            },
-                            icon = new TextAwesome
-                            {
-                                TextSize = 18,
-                                Origin = Anchor.Centre,
-                                Anchor = Anchor.Centre
-                            }
-                        }
-                    }
-                };
-            }
-
-            [BackgroundDependencyLoader]
-            private void load(OsuColour colours)
-            {
-                hover.Colour = colours.Yellow.Opacity(0.6f);
-                flashColour = colours.Yellow;
-            }
-
-            protected override bool OnHover(InputState state)
-            {
-                hover.FadeIn(500, EasingTypes.OutQuint);
-                return base.OnHover(state);
-            }
-
-            protected override void OnHoverLost(InputState state)
-            {
-                hover.FadeOut(500, EasingTypes.OutQuint);
-                base.OnHoverLost(state);
-            }
-
-            protected override bool OnClick(InputState state)
-            {
-                hover.FlashColour(flashColour, 800, EasingTypes.OutQuint);
-                return base.OnClick(state);
-            }
-
-            protected override bool OnMouseDown(InputState state, MouseDownEventArgs args)
-            {
-                content.ScaleTo(0.75f, 2000, EasingTypes.OutQuint);
-                return base.OnMouseDown(state, args);
-            }
-
-            protected override bool OnMouseUp(InputState state, MouseUpEventArgs args)
-            {
-                content.ScaleTo(1, 1000, EasingTypes.OutElastic);
-                return base.OnMouseUp(state, args);
             }
         }
     }

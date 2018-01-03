@@ -1,6 +1,7 @@
 // Copyright (c) 2007-2017 ppy Pty Ltd <contact@ppy.sh>.
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using osu.Framework;
@@ -8,9 +9,9 @@ using osu.Framework.Caching;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Sprites;
 using OpenTK;
 using OpenTK.Graphics;
+using osu.Framework.Graphics.Shapes;
 
 namespace osu.Game.Screens.Play
 {
@@ -69,7 +70,7 @@ namespace osu.Game.Screens.Play
 
         public override bool Invalidate(Invalidation invalidation = Invalidation.All, Drawable source = null, bool shallPropagate = true)
         {
-            if ((invalidation & Invalidation.SizeInParentSpace) > 0)
+            if ((invalidation & Invalidation.DrawSize) > 0)
                 layout.Invalidate();
             return base.Invalidate(invalidation, source, shallPropagate);
         }
@@ -77,7 +78,12 @@ namespace osu.Game.Screens.Play
         protected override void Update()
         {
             base.Update();
-            layout.Refresh(recreateGraph);
+
+            if (!layout.IsValid)
+            {
+                recreateGraph();
+                layout.Validate();
+            }
         }
 
         /// <summary>
@@ -165,6 +171,8 @@ namespace osu.Game.Screens.Play
             private const float padding = 2;
             public const float WIDTH = cube_size + padding;
 
+            public event Action<ColumnState> StateChanged;
+
             private readonly List<Box> drawableRows = new List<Box>();
 
             private float filled;
@@ -181,6 +189,7 @@ namespace osu.Game.Screens.Play
             }
 
             private ColumnState state;
+
             public ColumnState State
             {
                 get { return state; }
@@ -191,6 +200,8 @@ namespace osu.Game.Screens.Play
 
                     if (IsLoaded)
                         fillActive();
+
+                    StateChanged?.Invoke(State);
                 }
             }
 

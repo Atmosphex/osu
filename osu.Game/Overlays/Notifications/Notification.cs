@@ -7,22 +7,21 @@ using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Primitives;
-using osu.Framework.Graphics.Sprites;
-using osu.Framework.Graphics.Transforms;
 using osu.Framework.Input;
 using osu.Game.Graphics;
 using OpenTK;
 using OpenTK.Graphics;
+using osu.Framework.Graphics.Shapes;
+using osu.Game.Graphics.Containers;
 
 namespace osu.Game.Overlays.Notifications
 {
     public abstract class Notification : Container
     {
         /// <summary>
-        /// Use requested close.
+        /// User requested close.
         /// </summary>
-        public Action Closed;
+        public event Action Closed;
 
         /// <summary>
         /// Run on user activating the notification. Return true to close.
@@ -50,7 +49,7 @@ namespace osu.Game.Overlays.Notifications
             RelativeSizeAxes = Axes.X;
             AutoSizeAxes = Axes.Y;
 
-            AddInternal(new Drawable[]
+            AddRangeInternal(new Drawable[]
             {
                 Light = new NotificationLight
                 {
@@ -64,6 +63,8 @@ namespace osu.Game.Overlays.Notifications
                     Masking = true,
                     RelativeSizeAxes = Axes.X,
                     AutoSizeAxes = Axes.Y,
+                    AutoSizeDuration = 400,
+                    AutoSizeEasing = Easing.OutQuint,
                     Children = new Drawable[]
                     {
                         new Box
@@ -75,7 +76,7 @@ namespace osu.Game.Overlays.Notifications
                         {
                             RelativeSizeAxes = Axes.X,
                             Padding = new MarginPadding(5),
-                            Height = 60,
+                            AutoSizeAxes = Axes.Y,
                             Children = new Drawable[]
                             {
                                 IconContent = new Container
@@ -90,7 +91,6 @@ namespace osu.Game.Overlays.Notifications
                                     AutoSizeAxes = Axes.Y,
                                     Padding = new MarginPadding
                                     {
-                                        Top = 5,
                                         Left = 45,
                                         Right = 30
                                     },
@@ -136,24 +136,24 @@ namespace osu.Game.Overlays.Notifications
         protected override void LoadComplete()
         {
             base.LoadComplete();
-            FadeInFromZero(200);
+            this.FadeInFromZero(200);
             NotificationContent.MoveToX(DrawSize.X);
-            NotificationContent.MoveToX(0, 500, EasingTypes.OutQuint);
+            NotificationContent.MoveToX(0, 500, Easing.OutQuint);
         }
 
-        private bool wasClosed;
+        public bool WasClosed;
 
         public virtual void Close()
         {
-            if (wasClosed) return;
-            wasClosed = true;
+            if (WasClosed) return;
+            WasClosed = true;
 
             Closed?.Invoke();
-            FadeOut(100);
+            this.FadeOut(100);
             Expire();
         }
 
-        private class CloseButton : ClickableContainer
+        private class CloseButton : OsuClickableContainer
         {
             private Color4 hoverColour;
 
@@ -164,12 +164,12 @@ namespace osu.Game.Overlays.Notifications
 
                 Children = new[]
                 {
-                    new TextAwesome
+                    new SpriteIcon
                     {
                         Anchor = Anchor.Centre,
                         Origin = Anchor.Centre,
                         Icon = FontAwesome.fa_times_circle,
-                        TextSize = 20
+                        Size = new Vector2(20),
                     }
                 };
             }
@@ -182,13 +182,13 @@ namespace osu.Game.Overlays.Notifications
 
             protected override bool OnHover(InputState state)
             {
-                FadeColour(hoverColour, 200);
+                this.FadeColour(hoverColour, 200);
                 return base.OnHover(state);
             }
 
             protected override void OnHoverLost(InputState state)
             {
-                FadeColour(OsuColour.Gray(0.2f), 200);
+                this.FadeColour(OsuColour.Gray(0.2f), 200);
                 base.OnHoverLost(state);
             }
         }
@@ -203,6 +203,8 @@ namespace osu.Game.Overlays.Notifications
                 get { return pulsate; }
                 set
                 {
+                    if (pulsate == value) return;
+
                     pulsate = value;
 
                     pulsateLayer.ClearTransforms();
@@ -211,25 +213,9 @@ namespace osu.Game.Overlays.Notifications
                     if (pulsate)
                     {
                         const float length = 1000;
-                        pulsateLayer.Transforms.Add(new TransformAlpha
-                        {
-                            StartTime = Time.Current,
-                            EndTime = Time.Current + length,
-                            StartValue = 1,
-                            EndValue = 0.4f,
-                            Easing = EasingTypes.In
-                        });
-                        pulsateLayer.Transforms.Add(new TransformAlpha
-                        {
-                            StartTime = Time.Current + length,
-                            EndTime = Time.Current + length * 2,
-                            StartValue = 0.4f,
-                            EndValue = 1,
-                            Easing = EasingTypes.Out
-                        });
-
-                        //todo: figure why we can't add arbitrary delays at the end of loop.
-                        pulsateLayer.Loop(length * 2);
+                        pulsateLayer.Loop(length / 2,
+                            p => p.FadeTo(0.4f, length, Easing.In).Then().FadeTo(1, length, Easing.Out)
+                        );
                     }
                 }
             }
@@ -239,7 +225,7 @@ namespace osu.Game.Overlays.Notifications
                 set
                 {
                     base.Colour = value;
-                    pulsateLayer.EdgeEffect = new EdgeEffect
+                    pulsateLayer.EdgeEffect = new EdgeEffectParameters
                     {
                         Colour = ((Color4)value).Opacity(0.5f), //todo: avoid cast
                         Type = EdgeEffectType.Glow,

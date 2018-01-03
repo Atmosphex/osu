@@ -3,11 +3,8 @@
 
 using osu.Game.Rulesets.Objects.Types;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using osu.Game.Beatmaps.Timing;
-using osu.Game.Database;
-using osu.Game.Audio;
+using osu.Game.Beatmaps;
+using osu.Game.Beatmaps.ControlPoints;
 
 namespace osu.Game.Rulesets.Taiko.Objects
 {
@@ -38,62 +35,48 @@ namespace osu.Game.Rulesets.Taiko.Objects
         public double RequiredGreatHits { get; protected set; }
 
         /// <summary>
-        /// Total number of drum roll ticks.
-        /// </summary>
-        public int TotalTicks => Ticks.Count();
-
-        /// <summary>
-        /// Initializes the drum roll ticks if not initialized and returns them.
-        /// </summary>
-        public IEnumerable<DrumRollTick> Ticks => ticks ?? (ticks = createTicks());
-
-        private List<DrumRollTick> ticks;
-
-        /// <summary>
         /// The length (in milliseconds) between ticks of this drumroll.
         /// <para>Half of this value is the hit window of the ticks.</para>
         /// </summary>
         private double tickSpacing = 100;
 
-        public override void ApplyDefaults(TimingInfo timing, BeatmapDifficulty difficulty)
+        protected override void ApplyDefaultsToSelf(ControlPointInfo controlPointInfo, BeatmapDifficulty difficulty)
         {
-            base.ApplyDefaults(timing, difficulty);
+            base.ApplyDefaultsToSelf(controlPointInfo, difficulty);
 
-            tickSpacing = timing.BeatLengthAt(StartTime) / TickRate;
+            TimingControlPoint timingPoint = controlPointInfo.TimingPointAt(StartTime);
 
-            RequiredGoodHits = TotalTicks * Math.Min(0.15, 0.05 + 0.10 / 6 * difficulty.OverallDifficulty);
-            RequiredGreatHits = TotalTicks * Math.Min(0.30, 0.10 + 0.20 / 6 * difficulty.OverallDifficulty);
+            tickSpacing = timingPoint.BeatLength / TickRate;
+
+            RequiredGoodHits = NestedHitObjects.Count * Math.Min(0.15, 0.05 + 0.10 / 6 * difficulty.OverallDifficulty);
+            RequiredGreatHits = NestedHitObjects.Count * Math.Min(0.30, 0.10 + 0.20 / 6 * difficulty.OverallDifficulty);
         }
 
-        private List<DrumRollTick> createTicks()
+        protected override void CreateNestedHitObjects()
         {
-            var ret = new List<DrumRollTick>();
+            base.CreateNestedHitObjects();
 
+            createTicks();
+        }
+
+        private void createTicks()
+        {
             if (tickSpacing == 0)
-                return ret;
+                return;
 
             bool first = true;
             for (double t = StartTime; t < EndTime + tickSpacing / 2; t += tickSpacing)
             {
-                ret.Add(new DrumRollTick
+                AddNested(new DrumRollTick
                 {
                     FirstTick = first,
-                    ScrollTime = ScrollTime,
                     TickSpacing = tickSpacing,
                     StartTime = t,
-                    IsStrong = IsStrong,
-                    Samples = new SampleInfoList(Samples.Select(s => new SampleInfo
-                    {
-                        Bank = s.Bank,
-                        Name = @"slidertick",
-                        Volume = s.Volume
-                    }))
+                    IsStrong = IsStrong
                 });
 
                 first = false;
             }
-
-            return ret;
         }
     }
 }

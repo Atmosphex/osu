@@ -6,7 +6,6 @@ using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
 using osu.Framework.Configuration;
 using osu.Framework.Graphics;
-using osu.Framework.Graphics.Primitives;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Input;
@@ -52,7 +51,8 @@ namespace osu.Game.Graphics.UserInterface
             }
         }
 
-        private readonly Nub nub;
+        protected readonly Nub Nub;
+
         private readonly SpriteText labelSpriteText;
         private SampleChannel sampleChecked;
         private SampleChannel sampleUnchecked;
@@ -65,15 +65,16 @@ namespace osu.Game.Graphics.UserInterface
             Children = new Drawable[]
             {
                 labelSpriteText = new OsuSpriteText(),
-                nub = new Nub
+                Nub = new Nub
                 {
                     Anchor = Anchor.CentreRight,
                     Origin = Anchor.CentreRight,
                     Margin = new MarginPadding { Right = 5 },
-                }
+                },
+                new HoverClickSounds()
             };
 
-            nub.Current.BindTo(Current);
+            Nub.Current.BindTo(Current);
 
             Current.ValueChanged += newValue =>
             {
@@ -91,23 +92,23 @@ namespace osu.Game.Graphics.UserInterface
 
         protected override bool OnHover(InputState state)
         {
-            nub.Glowing = true;
-            nub.Expanded = true;
+            Nub.Glowing = true;
+            Nub.Expanded = true;
             return base.OnHover(state);
         }
 
         protected override void OnHoverLost(InputState state)
         {
-            nub.Glowing = false;
-            nub.Expanded = false;
+            Nub.Glowing = false;
+            Nub.Expanded = false;
             base.OnHoverLost(state);
         }
 
         [BackgroundDependencyLoader]
         private void load(AudioManager audio)
         {
-            sampleChecked = audio.Sample.Get(@"Checkbox/check-on");
-            sampleUnchecked = audio.Sample.Get(@"Checkbox/check-off");
+            sampleChecked = audio.Sample.Get(@"UI/check-on");
+            sampleUnchecked = audio.Sample.Get(@"UI/check-off");
         }
     }
 }

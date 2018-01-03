@@ -2,23 +2,18 @@
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
 using System.IO;
+using System.Linq;
 using NUnit.Framework;
+using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.IO;
 using osu.Game.Tests.Resources;
 using osu.Game.Beatmaps.Formats;
-using osu.Game.Database;
 
 namespace osu.Game.Tests.Beatmaps.IO
 {
     [TestFixture]
     public class OszArchiveReaderTest
     {
-        [OneTimeSetUpAttribute]
-        public void SetUp()
-        {
-            OszArchiveReader.Register();
-        }
-
         [Test]
         public void TestReadBeatmaps()
         {
@@ -40,7 +35,7 @@ namespace osu.Game.Tests.Beatmaps.IO
                     "Soleily - Renatus (MMzz) [Muzukashii].osu",
                     "Soleily - Renatus (MMzz) [Oni].osu"
                 };
-                var maps = reader.BeatmapFilenames;
+                var maps = reader.Filenames.ToArray();
                 foreach (var map in expected)
                     Assert.Contains(map, maps);
             }
@@ -55,13 +50,13 @@ namespace osu.Game.Tests.Beatmaps.IO
 
                 BeatmapMetadata meta;
                 using (var stream = new StreamReader(reader.GetStream("Soleily - Renatus (Deif) [Platter].osu")))
-                    meta = BeatmapDecoder.GetDecoder(stream).Decode(stream).Metadata;
+                    meta = Decoder.GetDecoder(stream).DecodeBeatmap(stream).Metadata;
 
                 Assert.AreEqual(241526, meta.OnlineBeatmapSetID);
                 Assert.AreEqual("Soleily", meta.Artist);
                 Assert.AreEqual("Soleily", meta.ArtistUnicode);
                 Assert.AreEqual("03. Renatus - Soleily 192kbps.mp3", meta.AudioFile);
-                Assert.AreEqual("Deif", meta.Author);
+                Assert.AreEqual("Deif", meta.AuthorString);
                 Assert.AreEqual("machinetop_background.jpg", meta.BackgroundFile);
                 Assert.AreEqual(164471, meta.PreviewTime);
                 Assert.AreEqual(string.Empty, meta.Source);
@@ -86,4 +81,3 @@ namespace osu.Game.Tests.Beatmaps.IO
         }
     }
 }
-

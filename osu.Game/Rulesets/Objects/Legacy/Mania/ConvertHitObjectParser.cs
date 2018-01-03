@@ -11,7 +11,7 @@ namespace osu.Game.Rulesets.Objects.Legacy.Mania
     /// <summary>
     /// A HitObjectParser to parse legacy osu!mania Beatmaps.
     /// </summary>
-    internal class ConvertHitObjectParser : Legacy.ConvertHitObjectParser
+    public class ConvertHitObjectParser : Legacy.ConvertHitObjectParser
     {
         protected override HitObject CreateHit(Vector2 position, bool newCombo)
         {
@@ -22,7 +22,7 @@ namespace osu.Game.Rulesets.Objects.Legacy.Mania
             };
         }
 
-        protected override HitObject CreateSlider(Vector2 position, bool newCombo, List<Vector2> controlPoints, double length, CurveType curveType, int repeatCount, List<SampleInfoList> repeatSamples)
+        protected override HitObject CreateSlider(Vector2 position, bool newCombo, List<Vector2> controlPoints, double length, CurveType curveType, int repeatCount, List<List<SampleInfo>> repeatSamples)
         {
             return new ConvertSlider
             {
@@ -39,6 +39,15 @@ namespace osu.Game.Rulesets.Objects.Legacy.Mania
         protected override HitObject CreateSpinner(Vector2 position, double endTime)
         {
             return new ConvertSpinner
+            {
+                X = position.X,
+                EndTime = endTime
+            };
+        }
+
+        protected override HitObject CreateHold(Vector2 position, bool newCombo, double endTime)
+        {
+            return new ConvertHold
             {
                 X = position.X,
                 EndTime = endTime

@@ -6,9 +6,9 @@ using OpenTK.Graphics;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Sprites;
+using osu.Framework.Graphics.Shapes;
 using osu.Game.Graphics;
-using osu.Game.Rulesets.Taiko.Judgements;
+using osu.Game.Rulesets.Objects.Drawables;
 using osu.Game.Rulesets.Taiko.Objects;
 
 namespace osu.Game.Rulesets.Taiko.UI
@@ -18,21 +18,23 @@ namespace osu.Game.Rulesets.Taiko.UI
     /// </summary>
     internal class HitExplosion : CircularContainer
     {
-        /// <summary>
-        /// The judgement this hit explosion visualises.
-        /// </summary>
-        public readonly TaikoJudgement Judgement;
+        public readonly DrawableHitObject JudgedObject;
 
         private readonly Box innerFill;
 
-        public HitExplosion(TaikoJudgement judgement)
+        private readonly bool isRim;
+
+        public HitExplosion(DrawableHitObject judgedObject, bool isRim)
         {
-            Judgement = judgement;
+            this.isRim = isRim;
 
-            Size = new Vector2(TaikoHitObject.DEFAULT_CIRCLE_DIAMETER);
+            JudgedObject = judgedObject;
 
-            Anchor = Anchor.Centre;
+            Anchor = Anchor.CentreLeft;
             Origin = Anchor.Centre;
+
+            RelativeSizeAxes = Axes.Both;
+            Size = new Vector2(TaikoHitObject.DEFAULT_SIZE);
 
             RelativePositionAxes = Axes.Both;
 
@@ -54,23 +56,15 @@ namespace osu.Game.Rulesets.Taiko.UI
         [BackgroundDependencyLoader]
         private void load(OsuColour colours)
         {
-            switch (Judgement.TaikoResult)
-            {
-                case TaikoHitResult.Good:
-                    innerFill.Colour = colours.Green;
-                    break;
-                case TaikoHitResult.Great:
-                    innerFill.Colour = colours.Blue;
-                    break;
-            }
+            innerFill.Colour = isRim ? colours.BlueDarker : colours.PinkDarker;
         }
 
         protected override void LoadComplete()
         {
             base.LoadComplete();
 
-            ScaleTo(5f, 1000, EasingTypes.OutQuint);
-            FadeOut(500);
+            this.ScaleTo(3f, 1000, Easing.OutQuint);
+            this.FadeOut(500);
 
             Expire();
         }
@@ -80,7 +74,7 @@ namespace osu.Game.Rulesets.Taiko.UI
         /// </summary>
         public void VisualiseSecondHit()
         {
-            ResizeTo(Size * TaikoHitObject.STRONG_CIRCLE_DIAMETER_SCALE, 50);
+            this.ResizeTo(new Vector2(TaikoHitObject.DEFAULT_STRONG_SIZE), 50);
         }
     }
 }

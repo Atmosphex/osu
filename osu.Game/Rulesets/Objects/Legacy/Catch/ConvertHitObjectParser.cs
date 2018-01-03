@@ -11,7 +11,7 @@ namespace osu.Game.Rulesets.Objects.Legacy.Catch
     /// <summary>
     /// A HitObjectParser to parse legacy osu!catch Beatmaps.
     /// </summary>
-    internal class ConvertHitObjectParser : Legacy.ConvertHitObjectParser
+    public class ConvertHitObjectParser : Legacy.ConvertHitObjectParser
     {
         protected override HitObject CreateHit(Vector2 position, bool newCombo)
         {
@@ -22,7 +22,7 @@ namespace osu.Game.Rulesets.Objects.Legacy.Catch
             };
         }
 
-        protected override HitObject CreateSlider(Vector2 position, bool newCombo, List<Vector2> controlPoints, double length, CurveType curveType, int repeatCount, List<SampleInfoList> repeatSamples)
+        protected override HitObject CreateSlider(Vector2 position, bool newCombo, List<Vector2> controlPoints, double length, CurveType curveType, int repeatCount, List<List<SampleInfo>> repeatSamples)
         {
             return new ConvertSlider
             {
@@ -42,6 +42,11 @@ namespace osu.Game.Rulesets.Objects.Legacy.Catch
             {
                 EndTime = endTime
             };
+        }
+
+        protected override HitObject CreateHold(Vector2 position, bool newCombo, double endTime)
+        {
+            return null;
         }
     }
 }

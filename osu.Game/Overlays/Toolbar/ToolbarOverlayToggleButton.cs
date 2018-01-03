@@ -4,12 +4,12 @@
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Sprites;
+using osu.Framework.Graphics.Shapes;
 using osu.Game.Graphics;
 
 namespace osu.Game.Overlays.Toolbar
 {
-    internal class ToolbarOverlayToggleButton : ToolbarButton
+    public class ToolbarOverlayToggleButton : ToolbarButton
     {
         private readonly Box stateBackground;
 
@@ -21,7 +21,11 @@ namespace osu.Game.Overlays.Toolbar
             set
             {
                 stateContainer = value;
-                stateContainer.StateChanged += stateChanged;
+                if (stateContainer != null)
+                {
+                    Action = stateContainer.ToggleVisibility;
+                    stateContainer.StateChanged += stateChanged;
+                }
             }
         }
 
@@ -31,7 +35,7 @@ namespace osu.Game.Overlays.Toolbar
             {
                 RelativeSizeAxes = Axes.Both,
                 Colour = OsuColour.Gray(150).Opacity(180),
-                BlendingMode = BlendingMode.Additive,
+                Blending = BlendingMode.Additive,
                 Depth = 2,
                 Alpha = 0,
             });
@@ -44,7 +48,7 @@ namespace osu.Game.Overlays.Toolbar
                 stateContainer.StateChanged -= stateChanged;
         }
 
-        private void stateChanged(OverlayContainer c, Visibility state)
+        private void stateChanged(Visibility state)
         {
             switch (state)
             {

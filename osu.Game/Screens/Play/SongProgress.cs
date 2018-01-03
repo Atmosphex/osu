@@ -12,15 +12,11 @@ using System.Linq;
 using osu.Framework.Timing;
 using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Objects.Types;
-using osu.Framework.Graphics.Primitives;
-
 namespace osu.Game.Screens.Play
 {
     public class SongProgress : OverlayContainer
     {
         private const int bottom_bar_height = 5;
-
-        protected override bool HideOnEscape => false;
 
         private static readonly Vector2 handle_size = new Vector2(14, 25);
 
@@ -28,10 +24,14 @@ namespace osu.Game.Screens.Play
 
         private readonly SongProgressBar bar;
         private readonly SongProgressGraph graph;
+        private readonly SongProgressInfo info;
 
         public Action<double> OnSeek;
 
-        public IClock AudioClock;
+        public override bool HandleInput => AllowSeeking;
+
+        private IClock audioClock;
+        public IClock AudioClock { set { audioClock = info.AudioClock = value; } }
 
         private double lastHitTime => ((objects.Last() as IHasEndTime)?.EndTime ?? objects.Last().StartTime) + 1;
 
@@ -44,6 +44,12 @@ namespace osu.Game.Screens.Play
             set
             {
                 graph.Objects = objects = value;
+
+                info.StartTime = firstHitTime;
+                info.EndTime = lastHitTime;
+
+                bar.StartTime = firstHitTime;
+                bar.EndTime = lastHitTime;
             }
         }
 
@@ -62,6 +68,14 @@ namespace osu.Game.Screens.Play
 
             Children = new Drawable[]
             {
+                info = new SongProgressInfo
+                {
+                    Origin = Anchor.BottomLeft,
+                    Anchor = Anchor.BottomLeft,
+                    RelativeSizeAxes = Axes.X,
+                    AutoSizeAxes = Axes.Y,
+                    Margin = new MarginPadding { Bottom = bottom_bar_height + graph_height },
+                },
                 graph = new SongProgressGraph
                 {
                     RelativeSizeAxes = Axes.X,
@@ -75,10 +89,7 @@ namespace osu.Game.Screens.Play
                     Alpha = 0,
                     Anchor = Anchor.BottomLeft,
                     Origin =  Anchor.BottomLeft,
-                    SeekRequested = delegate (float position)
-                    {
-                        OnSeek?.Invoke(firstHitTime + position * (lastHitTime - firstHitTime));
-                    },
+                    OnSeek = position => OnSeek?.Invoke(position),
                 },
             };
         }
@@ -108,19 +119,19 @@ namespace osu.Game.Screens.Play
 
         private void updateBarVisibility()
         {
-            bar.FadeTo(allowSeeking ? 1 : 0, transition_duration, EasingTypes.In);
-            MoveTo(new Vector2(0, allowSeeking ? 0 : bottom_bar_height), transition_duration, EasingTypes.In);
+            bar.FadeTo(allowSeeking ? 1 : 0, transition_duration, Easing.In);
+            this.MoveTo(new Vector2(0, allowSeeking ? 0 : bottom_bar_height), transition_duration, Easing.In);
         }
 
         protected override void PopIn()
         {
             updateBarVisibility();
-            FadeIn(500, EasingTypes.OutQuint);
+            this.FadeIn(500, Easing.OutQuint);
         }
 
         protected override void PopOut()
         {
-            FadeOut(100);
+            this.FadeOut(100);
         }
 
         protected override void Update()
@@ -130,10 +141,14 @@ namespace osu.Game.Screens.Play
             if (objects == null)
                 return;
 
-            double progress = ((AudioClock?.CurrentTime ?? Time.Current) - firstHitTime) / lastHitTime;
+            double position = audioClock?.CurrentTime ?? Time.Current;
+            double progress = (position - firstHitTime) / (lastHitTime - firstHitTime);
 
-            bar.UpdatePosition((float)progress);
-            graph.Progress = (int)(graph.ColumnCount * progress);
+            if (progress < 1)
+            {
+                bar.CurrentTime = position;
+                graph.Progress = (int)(graph.ColumnCount * progress);
+            }
         }
     }
 }

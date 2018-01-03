@@ -14,6 +14,7 @@ using osu.Game.Configuration;
 using OpenTK;
 using OpenTK.Graphics.ES30;
 using OpenTK.Graphics;
+using osu.Framework.Graphics.Primitives;
 
 namespace osu.Game.Rulesets.Osu.Objects.Drawables.Pieces
 {
@@ -44,10 +45,12 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables.Pieces
                     return;
                 accentColour = value;
 
-                if (LoadState == LoadState.Loaded)
+                if (LoadState == LoadState.Ready)
                     Schedule(reloadTexture);
             }
         }
+
+        public Quad PathDrawQuad => container.ScreenSpaceDrawQuad;
 
         private int textureWidth => (int)PathWidth * 2;
 
@@ -65,7 +68,7 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables.Pieces
                     {
                         path = new Path
                         {
-                            BlendingMode = BlendingMode.None,
+                            Blending = BlendingMode.None,
                         },
                     }
                 },
@@ -97,8 +100,8 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables.Pieces
         [BackgroundDependencyLoader]
         private void load(OsuConfigManager config)
         {
-            snakingIn = config.GetBindable<bool>(OsuConfig.SnakingInSliders);
-            snakingOut = config.GetBindable<bool>(OsuConfig.SnakingOutSliders);
+            snakingIn = config.GetBindable<bool>(OsuSetting.SnakingInSliders);
+            snakingOut = config.GetBindable<bool>(OsuSetting.SnakingOutSliders);
 
             reloadTexture();
         }

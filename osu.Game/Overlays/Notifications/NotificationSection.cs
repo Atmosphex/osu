@@ -8,14 +8,14 @@ using osu.Framework.Allocation;
 using osu.Framework.Extensions.IEnumerableExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Primitives;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using OpenTK;
+using osu.Game.Graphics.Containers;
 
 namespace osu.Game.Overlays.Notifications
 {
-    public class NotificationSection : FillFlowContainer
+    public class NotificationSection : AlwaysUpdateFillFlowContainer<Drawable>
     {
         private OsuSpriteText titleText;
         private OsuSpriteText countText;
@@ -24,14 +24,16 @@ namespace osu.Game.Overlays.Notifications
 
         private FlowContainer<Notification> notifications;
 
-        public void Add(Notification notification)
-        {
-            notifications.Add(notification);
-        }
+        public int DisplayedCount => notifications.Count(n => !n.WasClosed);
+
+        public int UnreadCount => notifications.Count(n => !n.WasClosed && !n.Read);
+
+        public void Add(Notification notification) => notifications.Add(notification);
 
         public IEnumerable<Type> AcceptTypes;
 
         private string clearText;
+
         public string ClearText
         {
             get { return clearText; }
@@ -69,7 +71,7 @@ namespace osu.Game.Overlays.Notifications
                 Left = 20,
             };
 
-            AddInternal(new Drawable[]
+            AddRangeInternal(new Drawable[]
             {
                 new Container
                 {
@@ -109,12 +111,12 @@ namespace osu.Game.Overlays.Notifications
                         },
                     },
                 },
-                notifications = new FillFlowContainer<Notification>
+                notifications = new AlwaysUpdateFillFlowContainer<Notification>
                 {
                     AutoSizeAxes = Axes.Y,
                     RelativeSizeAxes = Axes.X,
                     LayoutDuration = 150,
-                    LayoutEasing = EasingTypes.OutQuart,
+                    LayoutEasing = Easing.OutQuart,
                     Spacing = new Vector2(3),
                 }
             });
@@ -132,7 +134,7 @@ namespace osu.Game.Overlays.Notifications
             countText.Text = notifications.Children.Count(c => c.Alpha > 0.99f).ToString();
         }
 
-        private class ClearAllButton : ClickableContainer
+        private class ClearAllButton : OsuClickableContainer
         {
             private readonly OsuSpriteText text;
 
@@ -158,4 +160,13 @@ namespace osu.Game.Overlays.Notifications
             notifications?.Children.ForEach(n => n.Read = true);
         }
     }
+
+    public class AlwaysUpdateFillFlowContainer<T> : FillFlowContainer<T>
+        where T : Drawable
+    {
+        // this is required to ensure correct layout and scheduling on children.
+        // the layout portion of this is being tracked as a framework issue (https://github.com/ppy/osu-framework/issues/1297).
+        protected override bool RequiresChildrenUpdate => true;
+    }
+
 }

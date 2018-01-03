@@ -1,27 +1,27 @@
 ﻿// Copyright (c) 2007-2017 ppy Pty Ltd <contact@ppy.sh>.
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
-using OpenTK;
-using OpenTK.Graphics;
-using OpenTK.Input;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Primitives;
-using osu.Framework.Graphics.Sprites;
+using osu.Framework.Graphics.Shapes;
 using osu.Framework.Input;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
+using OpenTK;
+using OpenTK.Graphics;
+using OpenTK.Input;
+using osu.Game.Graphics.Containers;
 
 namespace osu.Game.Screens.Select.Options
 {
-    public class BeatmapOptionsButton : ClickableContainer
+    public class BeatmapOptionsButton : OsuClickableContainer
     {
         private const float width = 130;
 
         private readonly Box background;
         private readonly Box flash;
-        private readonly TextAwesome iconText;
+        private readonly SpriteIcon iconText;
         private readonly OsuSpriteText firstLine;
         private readonly OsuSpriteText secondLine;
         private readonly Container box;
@@ -54,13 +54,13 @@ namespace osu.Game.Screens.Select.Options
 
         protected override bool OnMouseDown(InputState state, MouseDownEventArgs args)
         {
-            flash.FadeTo(0.1f, 1000, EasingTypes.OutQuint);
+            flash.FadeTo(0.1f, 1000, Easing.OutQuint);
             return base.OnMouseDown(state, args);
         }
 
         protected override bool OnMouseUp(InputState state, MouseUpEventArgs args)
         {
-            flash.FadeTo(0, 1000, EasingTypes.OutQuint);
+            flash.FadeTo(0, 1000, Easing.OutQuint);
             return base.OnMouseUp(state, args);
         }
 
@@ -68,7 +68,7 @@ namespace osu.Game.Screens.Select.Options
         {
             flash.ClearTransforms();
             flash.Alpha = 0.9f;
-            flash.FadeOut(800, EasingTypes.OutExpo);
+            flash.FadeOut(800, Easing.OutExpo);
 
             return base.OnClick(state);
         }
@@ -84,7 +84,7 @@ namespace osu.Game.Screens.Select.Options
             return false;
         }
 
-        protected override bool InternalContains(Vector2 screenSpacePos) => box.Contains(screenSpacePos);
+        public override bool ReceiveMouseInputAt(Vector2 screenSpacePos) => box.ReceiveMouseInputAt(screenSpacePos);
 
         public BeatmapOptionsButton()
         {
@@ -100,7 +100,7 @@ namespace osu.Game.Screens.Select.Options
                     RelativeSizeAxes = Axes.Both,
                     Shear = new Vector2(0.2f, 0f),
                     Masking = true,
-                    EdgeEffect = new EdgeEffect
+                    EdgeEffect = new EdgeEffectParameters
                     {
                         Type = EdgeEffectType.Shadow,
                         Colour = Color4.Black.Opacity(0.2f),
@@ -119,7 +119,7 @@ namespace osu.Game.Screens.Select.Options
                         {
                             RelativeSizeAxes = Axes.Both,
                             EdgeSmoothness = new Vector2(1.5f, 0),
-                            BlendingMode = BlendingMode.Additive,
+                            Blending = BlendingMode.Additive,
                             Colour = Color4.White,
                             Alpha = 0,
                         },
@@ -134,11 +134,11 @@ namespace osu.Game.Screens.Select.Options
                     Direction = FillDirection.Vertical,
                     Children = new Drawable[]
                     {
-                        iconText = new TextAwesome
+                        iconText = new SpriteIcon
                         {
                             Origin = Anchor.TopCentre,
                             Anchor = Anchor.TopCentre,
-                            TextSize = 30,
+                            Size = new Vector2(30),
                             Shadow = true,
                             Icon = FontAwesome.fa_close,
                             Margin = new MarginPadding

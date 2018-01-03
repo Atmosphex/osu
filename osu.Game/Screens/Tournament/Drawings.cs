@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Primitives;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
 using osu.Framework.Logging;
@@ -21,7 +20,8 @@ using osu.Game.Screens.Tournament.Components;
 using osu.Game.Screens.Tournament.Teams;
 using OpenTK;
 using OpenTK.Graphics;
-using osu.Game.Users;
+using osu.Framework.IO.Stores;
+using osu.Framework.Graphics.Shapes;
 
 namespace osu.Game.Screens.Tournament
 {
@@ -29,7 +29,7 @@ namespace osu.Game.Screens.Tournament
     {
         private const string results_filename = "drawings_results.txt";
 
-        internal override bool ShowOverlays => false;
+        public override bool ShowOverlaysOnEnter => false;
 
         protected override BackgroundScreen CreateBackground() => new BackgroundScreenDefault();
 
@@ -37,7 +37,7 @@ namespace osu.Game.Screens.Tournament
         private GroupContainer groupsContainer;
         private OsuSpriteText fullTeamNameText;
 
-        private readonly List<Country> allTeams = new List<Country>();
+        private readonly List<DrawingsTeam> allTeams = new List<DrawingsTeam>();
 
         private DrawingsConfigManager drawingsConfig;
 
@@ -47,10 +47,23 @@ namespace osu.Game.Screens.Tournament
 
         public ITeamList TeamList;
 
+        private DependencyContainer dependencies;
+
+        protected override IReadOnlyDependencyContainer CreateLocalDependencies(IReadOnlyDependencyContainer parent) =>
+            dependencies = new DependencyContainer(base.CreateLocalDependencies(parent));
+
         [BackgroundDependencyLoader]
         private void load(TextureStore textures, Storage storage)
         {
             this.storage = storage;
+
+            TextureStore flagStore = new TextureStore();
+            // Local flag store
+            flagStore.AddStore(new RawTextureLoaderStore(new NamespacedResourceStore<byte[]>(new StorageBackedResourceStore(storage), "Drawings")));
+            // Default texture store
+            flagStore.AddStore(textures);
+
+            dependencies.Cache(flagStore);
 
             if (TeamList == null)
                 TeamList = new StorageBackedTeamList(storage);
@@ -72,6 +85,7 @@ namespace osu.Game.Screens.Tournament
                 },
                 new Sprite
                 {
+                    RelativeSizeAxes = Axes.Both,
                     FillMode = FillMode.Fill,
                     Texture = textures.Get(@"Backgrounds/Drawings/background.png")
                 },
@@ -179,21 +193,21 @@ namespace osu.Game.Screens.Tournament
 
                                     Children = new Drawable[]
                                     {
-                                        new OsuButton
+                                        new TriangleButton
                                         {
                                             RelativeSizeAxes = Axes.X,
 
                                             Text = "Begin random",
                                             Action = teamsContainer.StartScrolling,
                                         },
-                                        new OsuButton
+                                        new TriangleButton
                                         {
                                             RelativeSizeAxes = Axes.X,
 
                                             Text = "Stop random",
                                             Action = teamsContainer.StopScrolling,
                                         },
-                                        new OsuButton
+                                        new TriangleButton
                                         {
                                             RelativeSizeAxes = Axes.X,
 
@@ -218,12 +232,12 @@ namespace osu.Game.Screens.Tournament
 
                                     Children = new Drawable[]
                                     {
-                                        new OsuButton
+                                        new TriangleButton
                                         {
                                             RelativeSizeAxes = Axes.X,
 
                                             Text = "Reset",
-                                            Action = () => reset(false)
+                                            Action = () => reset()
                                         }
                                     }
                                 }
@@ -239,7 +253,7 @@ namespace osu.Game.Screens.Tournament
             reset(true);
         }
 
-        private void onTeamSelected(Country team)
+        private void onTeamSelected(DrawingsTeam team)
         {
             groupsContainer.AddTeam(team);
 
@@ -276,7 +290,7 @@ namespace osu.Game.Screens.Tournament
             teamsContainer.ClearTeams();
             allTeams.Clear();
 
-            foreach (Country t in TeamList.Teams)
+            foreach (DrawingsTeam t in TeamList.Teams)
             {
                 if (groupsContainer.ContainsTeam(t.FullName))
                     continue;
@@ -312,7 +326,7 @@ namespace osu.Game.Screens.Tournament
                             if (line.ToUpper().StartsWith("GROUP"))
                                 continue;
 
-                            Country teamToAdd = allTeams.FirstOrDefault(t => t.FullName == line);
+                            DrawingsTeam teamToAdd = allTeams.FirstOrDefault(t => t.FullName == line);
 
                             if (teamToAdd == null)
                                 continue;
@@ -326,7 +340,6 @@ namespace osu.Game.Screens.Tournament
                 {
                     Logger.Error(ex, "Failed to read last drawings results.");
                 }
-
             }
             else
             {

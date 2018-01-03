@@ -6,7 +6,7 @@ using osu.Game.Graphics;
 
 namespace osu.Game.Overlays.Toolbar
 {
-    internal class ToolbarSettingsButton : ToolbarOverlayToggleButton
+    public class ToolbarSettingsButton : ToolbarOverlayToggleButton
     {
         public ToolbarSettingsButton()
         {
@@ -15,11 +15,10 @@ namespace osu.Game.Overlays.Toolbar
             TooltipSub = "Change your settings";
         }
 
-        [BackgroundDependencyLoader]
-        private void load(OptionsOverlay options)
+        [BackgroundDependencyLoader(true)]
+        private void load(SettingsOverlay settings)
         {
-            StateContainer = options;
-            Action = options.ToggleVisibility;
+            StateContainer = settings;
         }
     }
 }

@@ -17,9 +17,19 @@ namespace osu.Game.Rulesets.Mods
         public abstract string Name { get; }
 
         /// <summary>
+        /// The shortened name of this mod.
+        /// </summary>
+        public abstract string ShortenedName { get; }
+
+        /// <summary>
         /// The icon of this mod.
         /// </summary>
         public virtual FontAwesome Icon => FontAwesome.fa_question;
+
+        /// <summary>
+        /// The type of this mod.
+        /// </summary>
+        public virtual ModType Type => ModType.Special;
 
         /// <summary>
         /// The user readable description of this mod.
@@ -30,6 +40,11 @@ namespace osu.Game.Rulesets.Mods
         /// The score multiplier of this mod.
         /// </summary>
         public abstract double ScoreMultiplier { get; }
+
+        /// <summary>
+        /// Returns true if this mod is implemented (and playable).
+        /// </summary>
+        public virtual bool HasImplementation => this is IApplicableMod;
 
         /// <summary>
         /// Returns if this mod is ranked.

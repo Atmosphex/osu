@@ -1,84 +1,112 @@
 ﻿// Copyright (c) 2007-2017 ppy Pty Ltd <contact@ppy.sh>.
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
+using System;
 using OpenTK.Graphics;
+using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Cursor;
 using osu.Game.Graphics;
+using osu.Game.Rulesets.Mods;
+using OpenTK;
 
 namespace osu.Game.Rulesets.UI
 {
-    public class ModIcon : Container
+    public class ModIcon : Container, IHasTooltip
     {
-        private readonly TextAwesome modIcon;
-        private readonly TextAwesome background;
+        private readonly SpriteIcon modIcon;
+        private readonly SpriteIcon background;
 
-        private float iconSize = 80;
-        public float IconSize
-        {
-            get
-            {
-                return iconSize;
-            }
-            set
-            {
-                iconSize = value;
-                reapplySize();
-            }
-        }
-
-        public new Color4 Colour
-        {
-            get
-            {
-                return background.Colour;
-            }
-            set
-            {
-                background.Colour = value;
-            }
-        }
+        private const float size = 80;
 
         public FontAwesome Icon
         {
-            get
-            {
-                return modIcon.Icon;
-            }
-            set
-            {
-                modIcon.Icon = value;
-            }
+            get { return modIcon.Icon; }
+            set { modIcon.Icon = value; }
         }
 
-        private void reapplySize()
-        {
-            background.TextSize = iconSize;
-            modIcon.TextSize = iconSize - 35;
-        }
+        private readonly ModType type;
 
-        public ModIcon()
+        public virtual string TooltipText { get; }
+
+        public ModIcon(Mod mod)
         {
+            if (mod == null) throw new ArgumentNullException(nameof(mod));
+
+            type = mod.Type;
+
+            TooltipText = mod.Name;
+
+            Size = new Vector2(size);
+
             Children = new Drawable[]
             {
-                background = new TextAwesome
+                background = new SpriteIcon
                 {
                     Origin = Anchor.Centre,
                     Anchor = Anchor.Centre,
+                    Size = new Vector2(size),
                     Icon = FontAwesome.fa_osu_mod_bg,
+                    Y = -6.5f,
                     Shadow = true,
-                    TextSize = 20
                 },
-                modIcon = new TextAwesome
+                modIcon = new SpriteIcon
                 {
                     Origin = Anchor.Centre,
                     Anchor = Anchor.Centre,
                     Colour = OsuColour.Gray(84),
-                    TextSize = 20
+                    Size = new Vector2(size - 35),
+                    Icon = mod.Icon
                 },
             };
+        }
 
-            reapplySize();
+        private Color4 backgroundColour;
+        private Color4 highlightedColour;
+
+        [BackgroundDependencyLoader]
+        private void load(OsuColour colours)
+        {
+            switch (type)
+            {
+                default:
+                case ModType.DifficultyIncrease:
+                    backgroundColour = colours.Yellow;
+                    highlightedColour = colours.YellowLight;
+                    break;
+                case ModType.DifficultyReduction:
+                    backgroundColour = colours.Green;
+                    highlightedColour = colours.GreenLight;
+                    break;
+                case ModType.Special:
+                    backgroundColour = colours.Blue;
+                    highlightedColour = colours.BlueLight;
+                    break;
+            }
+
+            applyStyle();
+        }
+
+        private bool highlighted;
+
+        public bool Highlighted
+        {
+            get
+            {
+                return highlighted;
+            }
+
+            set
+            {
+                highlighted = value;
+                applyStyle();
+            }
+        }
+
+        private void applyStyle()
+        {
+            background.Colour = highlighted ? highlightedColour : backgroundColour;
         }
     }
 }

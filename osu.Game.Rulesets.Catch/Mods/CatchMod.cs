@@ -17,7 +17,7 @@ namespace osu.Game.Rulesets.Catch.Mods
 
     public class CatchModHidden : ModHidden
     {
-        public override string Description => @"Play with no approach circles and fading notes for a slight score advantage.";
+        public override string Description => @"Play with fading notes for a slight score advantage.";
         public override double ScoreMultiplier => 1.06;
     }
 
@@ -30,6 +30,11 @@ namespace osu.Game.Rulesets.Catch.Mods
     public class CatchModSuddenDeath : ModSuddenDeath
     {
 
+    }
+
+    public class CatchModDaycore : ModDaycore
+    {
+        public override double ScoreMultiplier => 0.5;
     }
 
     public class CatchModDoubleTime : ModDoubleTime

@@ -5,10 +5,12 @@ using OpenTK.Graphics;
 using OpenTK.Input;
 using osu.Framework.Input;
 using System;
-using System.Linq;
 
 namespace osu.Game.Graphics.UserInterface
 {
+    /// <summary>
+    /// A textbox which holds focus eagerly.
+    /// </summary>
     public class FocusedTextBox : OsuTextBox
     {
         protected override Color4 BackgroundUnfocused => new Color4(10, 10, 10, 255);
@@ -23,30 +25,31 @@ namespace osu.Game.Graphics.UserInterface
             set
             {
                 focus = value;
-                if (!focus)
-                    TriggerFocusLost();
+                if (!focus && HasFocus)
+                    GetContainingInputManager().ChangeFocus(null);
             }
         }
 
-        protected override bool OnFocus(InputState state)
+        protected override void OnFocus(InputState state)
         {
-            var result = base.OnFocus(state);
+            base.OnFocus(state);
             BorderThickness = 0;
-            return result;
         }
 
-        protected override void OnFocusLost(InputState state)
+        protected override bool OnKeyDown(InputState state, KeyDownEventArgs args)
         {
-            if (state.Keyboard.Keys.Any(key => key == Key.Escape))
+            if (!args.Repeat && args.Key == Key.Escape)
             {
                 if (Text.Length > 0)
                     Text = string.Empty;
                 else
                     Exit?.Invoke();
+                return true;
             }
-            base.OnFocusLost(state);
+
+            return base.OnKeyDown(state, args);
         }
 
-        public override bool RequestingFocus => HoldFocus;
+        public override bool RequestsFocus => HoldFocus;
     }
 }

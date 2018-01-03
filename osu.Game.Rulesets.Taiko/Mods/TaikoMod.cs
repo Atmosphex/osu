@@ -37,6 +37,11 @@ namespace osu.Game.Rulesets.Taiko.Mods
 
     }
 
+    public class TaikoModDaycore : ModDaycore
+    {
+        public override double ScoreMultiplier => 0.5;
+    }
+
     public class TaikoModDoubleTime : ModDoubleTime
     {
         public override double ScoreMultiplier => 1.12;
@@ -72,7 +77,7 @@ namespace osu.Game.Rulesets.Taiko.Mods
         protected override Score CreateReplayScore(Beatmap<TaikoHitObject> beatmap) => new Score
         {
             User = new User { Username = "mekkadosu!" },
-            Replay = new TaikoAutoReplay(beatmap)
+            Replay = new TaikoAutoGenerator(beatmap).Generate(),
         };
     }
 }

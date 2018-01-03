@@ -2,15 +2,15 @@
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
 using Newtonsoft.Json;
-using osu.Game.Database;
+using osu.Game.Beatmaps;
 
 namespace osu.Game.Online.API.Requests
 {
-    public class GetBeatmapDetailsRequest : APIRequest<GetBeatmapDeatilsResponse>
+    public class GetBeatmapDetailsRequest : APIRequest<GetBeatmapDetailsResponse>
     {
         private readonly BeatmapInfo beatmap;
 
-        private string lookupString => beatmap.OnlineBeatmapID > 0 ? beatmap.OnlineBeatmapID.ToString() : $@"lookup?checksum={beatmap.Hash}&filename={beatmap.Path}";
+        private string lookupString => beatmap.OnlineBeatmapID > 0 ? beatmap.OnlineBeatmapID.ToString() : $@"lookup?checksum={beatmap.Hash}&filename={System.Uri.EscapeUriString(beatmap.Path)}";
 
         public GetBeatmapDetailsRequest(BeatmapInfo beatmap)
         {
@@ -20,7 +20,7 @@ namespace osu.Game.Online.API.Requests
         protected override string Target => $@"beatmaps/{lookupString}";
     }
 
-    public class GetBeatmapDeatilsResponse : BeatmapMetrics
+    public class GetBeatmapDetailsResponse : BeatmapMetrics
     {
         //the online API returns some metrics as a nested object.
         [JsonProperty(@"failtimes")]
